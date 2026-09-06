@@ -1,8 +1,5 @@
 <?php
-// ============================================
-// login.php - Halaman Login Administrator
-// Desain: Neo-Brutalism (Bold, Minimalist, High Contrast)
-// ============================================
+// Login administrator presensi HIMATIF
 
 require_once 'config.php';
 startSessionSafe();
@@ -15,37 +12,55 @@ if (isLoggedIn()) {
 
 $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $token = $_POST['csrf_token'] ?? '';
-    if (!verifyCsrfToken($token)) {
-        $error = 'Validasi sesi keamanan (CSRF) gagal. Silakan muat ulang halaman.';
+    $lockoutTime = $_SESSION['login_lockout'] ?? 0;
+    if ($lockoutTime > time()) {
+        $remaining = $lockoutTime - time();
+        $error = "Terlalu banyak percobaan login gagal. Silakan tunggu {$remaining} detik.";
     } else {
-        $username = trim($_POST['username'] ?? '');
-        $password = $_POST['password'] ?? '';
-
-        if (empty($username) || empty($password)) {
-            $error = 'Username dan password wajib diisi.';
+        $token = $_POST['csrf_token'] ?? '';
+        if (!verifyCsrfToken($token)) {
+            $error = 'Validasi sesi keamanan (CSRF) gagal. Silakan muat ulang halaman.';
         } else {
-            try {
-                $db = getDB();
-                $stmt = $db->prepare("SELECT id, username, password_hash, name FROM admins WHERE username = ? LIMIT 1");
-                $stmt->execute([$username]);
-                $admin = $stmt->fetch();
+            $username = trim($_POST['username'] ?? '');
+            $password = $_POST['password'] ?? '';
 
-                if ($admin && password_verify($password, $admin['password_hash'])) {
-                    // Login Berhasil
-                    $_SESSION['admin_logged_in'] = true;
-                    $_SESSION['admin_user'] = [
-                        'id'       => $admin['id'],
-                        'username' => $admin['username'],
-                        'name'     => $admin['name']
-                    ];
-                    header('Location: index.php');
-                    exit;
-                } else {
-                    $error = 'Username atau password yang Anda masukkan salah.';
+            if (empty($username) || empty($password)) {
+                $error = 'Username dan password wajib diisi.';
+            } else {
+                try {
+                    $db = getDB();
+                    $stmt = $db->prepare("SELECT id, username, password_hash, name FROM admins WHERE username = ? LIMIT 1");
+                    $stmt->execute([$username]);
+                    $admin = $stmt->fetch();
+
+                    if ($admin && password_verify($password, $admin['password_hash'])) {
+                        // Login Berhasil -> Hindari Session Fixation
+                        session_regenerate_id(true);
+                        unset($_SESSION['login_attempts'], $_SESSION['login_lockout']);
+
+                        $_SESSION['admin_logged_in'] = true;
+                        $_SESSION['admin_user'] = [
+                            'id'       => $admin['id'],
+                            'username' => $admin['username'],
+                            'name'     => $admin['name']
+                        ];
+                        header('Location: index.php');
+                        exit;
+                    } else {
+                        // Rate limiting percobaan login
+                        $_SESSION['login_attempts'] = ($_SESSION['login_attempts'] ?? 0) + 1;
+                        if ($_SESSION['login_attempts'] >= 5) {
+                            $_SESSION['login_lockout'] = time() + 60; // 60 detik cooldown
+                            $error = 'Terlalu banyak percobaan login gagal. Silakan tunggu 1 menit sebelum mencoba kembali.';
+                        } else {
+                            $attemptsLeft = 5 - $_SESSION['login_attempts'];
+                            $error = "Username atau password salah. (Sisa percobaan: {$attemptsLeft})";
+                        }
+                    }
+                } catch (Exception $e) {
+                    error_log("Login error: " . $e->getMessage());
+                    $error = 'Terjadi kesalahan sistem saat memproses login. Silakan hubungi administrator.';
                 }
-            } catch (Exception $e) {
-                $error = 'Terjadi kesalahan sistem: ' . $e->getMessage();
             }
         }
     }
@@ -56,7 +71,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login Admin - Sistem Presensi Mahasiswa</title>
+  <title>Login Admin - Presensi HIMATIF UMS</title>
+  <link rel="icon" type="image/png" href="assets/Image/logo-himatif-light.png">
+  <link rel="apple-touch-icon" href="assets/Image/logo-himatif-light.png">
   <link rel="stylesheet" href="assets/style.css">
   <style>
     body {
@@ -81,6 +98,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       margin-bottom: 24px;
       padding-bottom: 16px;
       border-bottom: 3px solid #000000;
+      text-align: center;
+    }
+    .login-brand {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .login-logo-img {
+      width: 80px;
+      height: 80px;
+      object-fit: contain;
+      filter: none;
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .login-logo-img:hover {
+      transform: scale(1.05);
+    }
+    .login-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--color-yellow);
+      color: #000000;
+      border: 2px solid #000000;
+      padding: 3px 10px;
+      font-family: var(--font-mono);
+      font-weight: 800;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      box-shadow: 2px 2px 0px #000000;
     }
     .login-logo {
       display: inline-flex;
@@ -128,9 +177,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="login-container">
   <div class="login-card">
     <div class="login-header">
-      <div class="login-logo">RFID PRESENSI</div>
-      <h1 class="login-title">Autentikasi Admin</h1>
-      <div class="login-subtitle">Masuk untuk mengelola presensi &amp; data panitia</div>
+      <div class="login-brand">
+        <img src="assets/Image/logo-himatif-light.png" alt="Logo HIMATIF UMS" class="login-logo-img">
+        <div class="login-badge">HIMATIF UMS</div>
+      </div>
+      <h1 class="login-title">Sistem Presensi</h1>
+      <div class="login-subtitle">Masuk untuk mengelola presensi RFID &amp; program kerja</div>
     </div>
 
     <?php if (!empty($error)): ?>
@@ -155,11 +207,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <label class="form-label" for="password">Password</label>
         <input type="password" id="password" name="password" placeholder="Masukkan password" required
                autocomplete="current-password"
-               style="width: 100%; padding: 10px 14px; font-size: 13px; border: 2px solid #000; outline: none; box-shadow: var(--shadow-sm);">
+               style="width: 100%; padding: 10px 14px; font-size: 13px; border: 2px solid #000; box-shadow: var(--shadow-sm);">
       </div>
 
       <button type="submit" class="btn btn-warning" style="width: 100%; padding: 12px; font-size: 14px; margin-top: 10px;">
-        MASUK KE DASHBOARD &rarr;
+        Masuk ke Dashboard
       </button>
     </form>
 

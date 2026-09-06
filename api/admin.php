@@ -1,10 +1,5 @@
 <?php
-// ============================================
-// api/admin.php
-// Manajemen Akun & Ganti Password Admin
-// GET  → info admin yang sedang login
-// POST → ganti password admin
-// ============================================
+// API autentikasi dan pengelolaan akun admin
 
 require_once '../config.php';
 setCorsHeaders();

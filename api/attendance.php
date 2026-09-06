@@ -1,10 +1,5 @@
 <?php
-// ============================================
-// api/attendance.php
-// Ambil & Hapus Rekap Absensi
-// GET    → rekap absensi (filter: date, student_id)
-// DELETE / POST → hapus record absensi (by id atau date)
-// ============================================
+// API rekap dan riwayat absensi mahasiswa
 
 require_once '../config.php';
 setCorsHeaders();
@@ -128,15 +123,14 @@ if ($method === 'GET') {
     ]);
 }
 
-// --- DELETE: Hapus data absensi ---
-if ($method === 'DELETE' || (isset($_GET['action']) && $_GET['action'] === 'delete')) {
+// --- DELETE: Hapus data absensi (Hanya metode DELETE, tolak GET) ---
+if ($method === 'DELETE') {
     checkApiAuth();
-    // Baca dari JSON body atau GET query param
     $rawInput = file_get_contents('php://input');
     $body     = json_decode($rawInput, true) ?: [];
 
-    $id   = (int)($body['id']   ?? $_GET['id']   ?? 0);
-    $date = trim($body['date']  ?? $_GET['date'] ?? '');
+    $id   = (int)($body['id']   ?? 0);
+    $date = trim($body['date']  ?? '');
 
     if ($id > 0) {
         // Hapus 1 record absensi
@@ -149,7 +143,7 @@ if ($method === 'DELETE' || (isset($_GET['action']) && $_GET['action'] === 'dele
         $stmt->execute([$date]);
         sendJSON(['success' => true, 'message' => "Semua absensi tanggal $date berhasil dihapus"]);
     } else {
-        sendJSON(['success' => false, 'message' => 'ID atau tanggal tidak ditemukan'], 400);
+        sendJSON(['success' => false, 'message' => 'ID atau tanggal tidak valid'], 400);
     }
 }
 

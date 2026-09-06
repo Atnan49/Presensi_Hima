@@ -8,20 +8,27 @@ $currentUser = getCurrentUser();
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sistem Presensi Mahasiswa - RFID / ESP8266</title>
-  <meta name="description" content="Dashboard Presensi Mahasiswa Berbasis RFID dan IoT ESP8266 dengan Sistem Desain Neo-Brutalism">
+  <title>Sistem Presensi HIMATIF - RFID / ESP8266</title>
+  <meta name="description" content="Dashboard Presensi Mahasiswa Berbasis RFID dan IoT ESP8266 HIMATIF UMS">
+  <link rel="icon" type="image/png" href="assets/Image/logo-himatif-light.png">
+  <link rel="apple-touch-icon" href="assets/Image/logo-himatif-light.png">
   <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
 
 <div class="app-wrapper">
 
-  <!-- =================== SIDEBAR =================== -->
+  <!-- Sidebar -->
   <aside class="sidebar">
     <div class="sidebar-logo">
-      <div class="logo-box">RFID</div>
-      <h1>Sistem Presensi<br>Mahasiswa</h1>
-      <div class="version">ESP8266 + RFID • v1.1</div>
+      <div class="sidebar-brand">
+        <img src="assets/Image/logo-himatif-light.png" alt="Logo HIMATIF UMS" class="sidebar-logo-img">
+        <div class="sidebar-brand-text">
+          <span class="sidebar-brand-badge">HIMATIF UMS</span>
+          <h1 class="sidebar-brand-title">Sistem Presensi</h1>
+        </div>
+      </div>
+      <div class="version">ESP8266 + RFID • Proker HIMA</div>
     </div>
 
     <nav class="sidebar-nav">
@@ -82,7 +89,7 @@ $currentUser = getCurrentUser();
     </div>
   </aside>
 
-  <!-- =================== MAIN CONTENT =================== -->
+  <!-- Main content -->
   <main class="main-content">
 
     <!-- Top Bar -->
@@ -102,7 +109,7 @@ $currentUser = getCurrentUser();
         <!-- Active Session Selector -->
         <div class="session-selector-box" style="display: inline-flex; align-items: center; gap: 6px; background: #ffffff; border: 2px solid #000; padding: 4px 8px; box-shadow: 2px 2px 0px #000;">
           <span style="font-size: 10px; font-weight: 800; background: #000; color: #fff; padding: 2px 6px; letter-spacing: 0.05em;">SESI</span>
-          <select id="select-active-session" onchange="onSessionChange(this.value)" style="border: none; outline: none; background: transparent; font-family: var(--font-mono); font-size: 11px; font-weight: 700; cursor: pointer; padding: 2px 4px;">
+          <select id="select-active-session" onchange="onSessionChange(this.value)" style="border: none; background: transparent; font-family: var(--font-mono); font-size: 11px; font-weight: 700; cursor: pointer; padding: 2px 4px;">
             <option value="sesi_1">Sesi 1 (Datang / Pagi)</option>
             <option value="sesi_2">Sesi 2 (Setelah Ishoma / Siang)</option>
             <option value="sesi_3">Sesi 3 (Pulang / Penutupan)</option>
@@ -119,9 +126,7 @@ $currentUser = getCurrentUser();
       </div>
     </header>
 
-    <!-- =========================================
-         PANEL: DASHBOARD
-         ========================================= -->
+    <!-- Panel: Dashboard -->
     <section class="panel active" id="panel-dashboard">
 
       <!-- Live Feed -->
@@ -153,7 +158,7 @@ $currentUser = getCurrentUser();
           <div class="stat-info">
             <div class="stat-label">Belum Hadir</div>
             <div class="stat-value" id="stat-alpha">0</div>
-            <div class="font-mono text-xs mt-1" style="font-weight: 800; text-decoration: underline; color: var(--color-red);">LIHAT DAFTAR ALPHA &rarr;</div>
+            <div class="font-mono text-xs mt-1" style="font-weight: 700; text-decoration: underline; color: var(--color-red);">Lihat daftar alpha</div>
           </div>
         </div>
         <div class="stat-card stat-card-warning">
@@ -212,9 +217,7 @@ $currentUser = getCurrentUser();
     </section>
     <!-- END PANEL DASHBOARD -->
 
-    <!-- =========================================
-         PANEL: TAMBAH PESERTA
-         ========================================= -->
+    <!-- Panel: Tambah peserta -->
     <section class="panel" id="panel-tambah">
 
       <div class="alert-box alert-warning" style="margin-bottom: 24px;">
@@ -269,9 +272,7 @@ $currentUser = getCurrentUser();
     </section>
     <!-- END PANEL TAMBAH -->
 
-    <!-- =========================================
-         PANEL: DATA MAHASISWA
-         ========================================= -->
+    <!-- Panel: Data mahasiswa -->
     <section class="panel" id="panel-mahasiswa">
       <div class="card">
         <div class="card-header">
@@ -314,9 +315,7 @@ $currentUser = getCurrentUser();
     </section>
     <!-- END PANEL MAHASISWA -->
 
-    <!-- =========================================
-         PANEL: REKAP ABSENSI
-         ========================================= -->
+    <!-- Panel: Rekap absensi -->
     <section class="panel" id="panel-rekap">
 
       <!-- 1. Filter Tanggal & Export Actions Bar -->
@@ -406,9 +405,7 @@ $currentUser = getCurrentUser();
     </section>
     <!-- END PANEL REKAP -->
 
-    <!-- =========================================
-         PANEL: PROGRAM KERJA / ACARA HIMA
-         ========================================= -->
+    <!-- Panel: Program kerja dan acara -->
     <section class="panel" id="panel-events">
       <div class="card">
         <div class="card-header">
@@ -451,9 +448,7 @@ $currentUser = getCurrentUser();
   </main>
 </div>
 
-<!-- =========================================
-     MODAL: Register / Tambah Peserta
-     ========================================= -->
+<!-- Modal: Register peserta -->
 <div class="modal-overlay" id="modal-register">
   <div class="modal-box">
     <div class="modal-title" id="modal-reg-title">Daftarkan Mahasiswa</div>
@@ -481,9 +476,7 @@ $currentUser = getCurrentUser();
   </div>
 </div>
 
-<!-- =========================================
-     MODAL: Edit Mahasiswa
-     ========================================= -->
+<!-- Modal: Edit data mahasiswa -->
 <div class="modal-overlay" id="modal-edit">
   <div class="modal-box">
     <div class="modal-title">Edit Data Mahasiswa</div>
@@ -512,9 +505,7 @@ $currentUser = getCurrentUser();
   </div>
 </div>
 
-<!-- =========================================
-     MODAL: Buat Program Kerja / Acara
-     ========================================= -->
+<!-- Modal: Buat program kerja dan acara -->
 <div class="modal-overlay" id="modal-create-event">
   <div class="modal-box">
     <div class="modal-title">Buat Program Kerja / Acara Baru</div>
@@ -549,9 +540,7 @@ $currentUser = getCurrentUser();
   </div>
 </div>
 
-<!-- =========================================
-     MODAL: Daftar Anggota Belum Hadir (Alpha)
-     ========================================= -->
+<!-- Modal: Daftar anggota belum hadir -->
 <div class="modal-overlay" id="modal-alpha">
   <div class="modal-box" style="max-width: 650px; width: 95%;">
     <div class="flex items-center justify-between" style="border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 16px;">
@@ -589,9 +578,7 @@ $currentUser = getCurrentUser();
   </div>
 </div>
 
-<!-- =========================================
-     MODAL: Import Batch Mahasiswa (CSV/Excel)
-     ========================================= -->
+<!-- Modal: Import batch mahasiswa -->
 <div class="modal-overlay" id="modal-import">
   <div class="modal-box" style="max-width: 600px; width: 95%;">
     <div class="modal-title">Import Massal Data Mahasiswa</div>
@@ -631,14 +618,12 @@ $currentUser = getCurrentUser();
 
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeImportModal()">Batal</button>
-      <button class="btn btn-primary" id="btn-submit-import" onclick="submitBatchImport()" disabled>Mulai Import &rarr;</button>
+      <button class="btn btn-primary" id="btn-submit-import" onclick="submitBatchImport()" disabled>Mulai Import</button>
     </div>
   </div>
 </div>
 
-<!-- =========================================
-     MODAL: Ganti Password Admin
-     ========================================= -->
+<!-- Modal: Ubah password admin -->
 <div class="modal-overlay" id="modal-password">
   <div class="modal-box" style="max-width: 440px;">
     <div class="modal-title">Ubah Password Administrator</div>

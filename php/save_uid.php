@@ -1,7 +1,5 @@
 <?php
-// ============================================================
-// save_uid.php — Simpan UID terakhir (untuk monitoring Python)
-// ============================================================
+// Pencatatan UID terakhir kartu RFID
 
 include "koneksi.php";
 

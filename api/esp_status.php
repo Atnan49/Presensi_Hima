@@ -1,10 +1,5 @@
 <?php
-// ============================================
-// api/esp_status.php
-// Heartbeat dari ESP8266 + cek status online
-// POST → ESP kirim heartbeat (tiap 20 detik)
-// GET  → Website cek apakah ESP online
-// ============================================
+// Monitoring heartbeat status perangkat ESP8266
 
 require_once '../config.php';
 setCorsHeaders();

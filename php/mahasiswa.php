@@ -1,11 +1,11 @@
 <?php
-// ============================================================
-// get_mahasiswa.php — CRUD Mahasiswa
-// Actions: list, tambah, edit, hapus, get_by_id
-// ============================================================
+// CRUD master data mahasiswa dan kartu RFID
 
 header("Content-Type: application/json");
 include "koneksi.php";
+
+// Pastikan sesi admin aktif untuk mengakses data mahasiswa
+checkApiAuth();
 
 $action = $_REQUEST['action'] ?? 'list';
 
@@ -13,14 +13,14 @@ $action = $_REQUEST['action'] ?? 'list';
 if ($action === 'list') {
     $search = trim($_GET['search'] ?? '');
     if ($search !== '') {
-        $like = "%" . $conn->real_escape_string($search) . "%";
-        $sql  = "SELECT * FROM mahasiswa
-                 WHERE nama LIKE '$like' OR nim LIKE '$like' OR prodi LIKE '$like'
-                 ORDER BY nama ASC";
+        $like = "%" . $search . "%";
+        $stmt = $conn->prepare("SELECT * FROM mahasiswa WHERE nama LIKE ? OR nim LIKE ? OR prodi LIKE ? ORDER BY nama ASC");
+        $stmt->bind_param("sss", $like, $like, $like);
+        $stmt->execute();
+        $result = $stmt->get_result();
     } else {
-        $sql = "SELECT * FROM mahasiswa ORDER BY nama ASC";
+        $result = $conn->query("SELECT * FROM mahasiswa ORDER BY nama ASC");
     }
-    $result = $conn->query($sql);
     $data   = [];
     while ($row = $result->fetch_assoc()) {
         $data[] = $row;

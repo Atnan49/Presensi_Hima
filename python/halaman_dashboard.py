@@ -1,7 +1,4 @@
-# ============================================================
-# halaman_dashboard.py — Dashboard Utama
-# Statistik + Live Feed presensi terbaru
-# ============================================================
+# Modul tampilan dashboard utama presensi
 
 import tkinter as tk
 from tkinter import ttk
@@ -41,7 +38,7 @@ class HalamanDashboard(tk.Frame):
         stats_def = [
             ("total_mhs",   "👥 Total\nMahasiswa", ACCENT,   "0"),
             ("total_acara", "📅 Total\nAcara",     ACCENT2,  "0"),
-            ("acara_aktif", "🟢 Acara\nAktif",     SUCCESS,  "—"),
+            ("acara_aktif", "🟢 Acara\nAktif",     SUCCESS,  "-"),
             ("hadir_hari",  "✅ Hadir\nHari Ini",  WARNING,  "0"),
         ]
         for key, label, color, default in stats_def:
@@ -175,11 +172,11 @@ class HalamanDashboard(tk.Frame):
             self.lbl_acara_aktif.config(
                 text=f"🟢 Acara Aktif: {acara['nama_acara']}  |  "
                      f"📍 {acara.get('lokasi', '-')}  |  "
-                     f"🕐 {acara.get('waktu_mulai','')[:5]} – {acara.get('waktu_selesai','')[:5]}",
+                     f"🕐 {acara.get('waktu_mulai','')[:5]} - {acara.get('waktu_selesai','')[:5]}",
                 fg=SUCCESS
             )
         else:
-            self.stat_cards["acara_aktif"].val_label.config(text="—")
+            self.stat_cards["acara_aktif"].val_label.config(text="-")
             self.lbl_acara_aktif.config(
                 text="⚪ Tidak ada acara aktif saat ini",
                 fg=TEXT_DIM

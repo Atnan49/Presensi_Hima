@@ -11,7 +11,7 @@
   
   --text-main:       #000000;
   --text-secondary:  #3f3f46;
-  --text-muted:      #71717a;
+  --text-muted:      #52525b;
   
   --border-color:    #000000;
   --border-thin:     1px solid #000000;
@@ -118,9 +118,61 @@ body {
 }
 
 .sidebar-logo {
-  padding: 24px 20px 20px;
+  padding: 20px 18px 18px;
   border-bottom: 3px solid #000000;
   background: var(--bg-main);
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.sidebar-logo-img {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  flex-shrink: 0;
+  filter: none;
+  transition: transform 0.2s ease;
+}
+
+.sidebar-logo-img:hover {
+  transform: scale(1.05);
+}
+
+.sidebar-brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sidebar-brand-badge {
+  display: inline-block;
+  align-self: flex-start;
+  background: var(--color-yellow);
+  color: #000000;
+  border: 1.5px solid #000000;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  box-shadow: 1.5px 1.5px 0px #000000;
+  margin-bottom: 4px;
+}
+
+.sidebar-logo h1,
+.sidebar-logo .sidebar-brand-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-main);
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0;
 }
 
 .sidebar-logo .logo-box {
@@ -140,25 +192,16 @@ body {
   box-shadow: var(--shadow-sm);
 }
 
-.sidebar-logo h1 {
-  font-size: 15px;
-  font-weight: 800;
-  color: var(--text-main);
-  line-height: 1.2;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
 .sidebar-logo .version {
-  font-size: 11px;
+  font-size: 10.5px;
   font-family: var(--font-mono);
   color: var(--text-secondary);
   font-weight: 600;
-  margin-top: 6px;
-  display: inline-block;
+  display: block;
   background: var(--bg-alt);
   border: 1px solid #000000;
-  padding: 2px 6px;
+  padding: 3px 8px;
+  box-shadow: 1px 1px 0px #000000;
 }
 
 .sidebar-nav {
@@ -937,7 +980,6 @@ select {
   background: var(--bg-main);
   color: var(--text-main);
   border: 2px solid #000000;
-  outline: none;
   box-shadow: var(--shadow-sm);
   transition: var(--transition-fast);
 }

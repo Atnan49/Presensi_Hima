@@ -239,8 +239,8 @@ function updateLiveFeed(name, time) {
   }
 
   el.innerHTML = `
-    <span class="tap-name">${name}</span>
-    <span class="tap-time font-mono font-bold">[${time || ''}]</span>
+    <span class="tap-name">${escapeHtml(name)}</span>
+    <span class="tap-time font-mono font-bold">[${escapeHtml(time || '')}]</span>
   `;
 
   if (time && time !== lastRecordedTapTime) {
@@ -249,9 +249,7 @@ function updateLiveFeed(name, time) {
   }
 }
 
-// ============================================
-// PANEL TAMBAH MAHASISWA & UNKNOWN CARDS
-// ============================================
+// Panel tambah mahasiswa dan kartu belum terdaftar
 async function loadUnknownCards() {
   // 1. Jika ada data cloud
   if (window.isFirebaseConnected && window.cloudUnknownCards) {
@@ -357,9 +355,7 @@ async function submitRegister() {
   loadDashboard();
 }
 
-// ============================================
-// PANEL KELOLA DATA MAHASISWA
-// ============================================
+// Panel data mahasiswa
 async function loadStudents(searchQuery = '') {
   // 1. Jika ada data di Firebase Cloud
   if (window.isFirebaseConnected && window.cloudUsers) {
@@ -548,9 +544,7 @@ async function deleteStudent(uid, name, id = null) {
   loadDashboard();
 }
 
-// ============================================
-// REKAP ABSENSI
-// ============================================
+// Rekap absensi
 async function loadRekap() {
   const dateInput = document.getElementById('rekap-date');
   if (dateInput && !dateInput.value) {
@@ -630,9 +624,44 @@ function renderRekapTable(records, summary) {
   `).join('');
 }
 
-// ============================================
-// EXPORT CSV & EXCEL HELPERS (Native Clean XLSX / CSV)
-// ============================================
+async function clearRekapByDate() {
+  const dateInput = document.getElementById('rekap-date');
+  const date = dateInput ? dateInput.value : state.selectedDate;
+  if (!date) {
+    showToast('Pilih tanggal terlebih dahulu', 'warning');
+    return;
+  }
+  if (!confirm(`Yakin ingin menghapus semua rekap presensi pada tanggal ${date}?\nTindakan ini tidak dapat dibatalkan.`)) return;
+
+  try {
+    const res = await fetch(API.attendance, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message || 'Rekap kehadiran berhasil dihapus', 'success');
+      loadRekap();
+      loadDashboard();
+    } else {
+      showToast(data.message || 'Gagal menghapus rekap kehadiran', 'danger');
+    }
+  } catch (e) {
+    console.error(e);
+    showToast('Terjadi kesalahan saat menghapus rekap kehadiran', 'danger');
+  }
+}
+
+// Export CSV dan Excel
+
+function sanitizeCellForCsv(val) {
+  let str = String(val ?? '');
+  if (/^[=+\-@\t\r]/.test(str)) {
+    return "'" + str;
+  }
+  return str;
+}
 
 // 1. Download CSV Bersih & Standar (Kompatibel Excel, Google Sheets, dll.)
 function downloadCSV(filename, headers, rows) {
@@ -643,10 +672,10 @@ function downloadCSV(filename, headers, rows) {
 
   // UTF-8 BOM (\uFEFF)
   let csvContent = '\uFEFF';
-  csvContent += headers.map(h => `"${String(h).replace(/"/g, '""')}"`).join(',') + '\r\n';
+  csvContent += headers.map(h => `"${sanitizeCellForCsv(h).replace(/"/g, '""')}"`).join(',') + '\r\n';
 
   rows.forEach(row => {
-    csvContent += row.map(col => `"${String(col ?? '').replace(/"/g, '""')}"`).join(',') + '\r\n';
+    csvContent += row.map(col => `"${sanitizeCellForCsv(col).replace(/"/g, '""')}"`).join(',') + '\r\n';
   });
 
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -914,22 +943,34 @@ function exportStudents(format = 'csv') {
   }
 }
 
-// ============================================
-// TOAST NOTIFIKASI
-// ============================================
+// Notifikasi toast
 function showToast(msg, type = 'info') {
   const container = document.getElementById('toast-container');
   if (!container) return;
 
-  const labelText = type === 'error' ? 'ERROR' : (type === 'warning' ? 'PERINGATAN' : (type === 'success' ? 'SUKSES' : 'INFO'));
+  const normalizedType = type === 'error' ? 'danger' : type;
+  const labelText = (normalizedType === 'danger') ? 'ERROR' : (normalizedType === 'warning' ? 'PERINGATAN' : (normalizedType === 'success' ? 'SUKSES' : 'INFO'));
 
   const toast = document.createElement('div');
-  toast.className = `toast toast-${type}`;
-  toast.innerHTML = `
-    <span class="toast-label">${labelText}</span>
-    <span class="toast-msg font-mono text-sm">${msg}</span>
-    <button class="toast-close" style="background:transparent;border:none;cursor:pointer;font-weight:bold;margin-left:auto;padding:0 4px;font-family:monospace;font-size:13px;" onclick="this.parentElement.remove()">✕</button>
-  `;
+  toast.className = `toast toast-${normalizedType}`;
+
+  const labelSpan = document.createElement('span');
+  labelSpan.className = 'toast-label';
+  labelSpan.textContent = labelText;
+
+  const msgSpan = document.createElement('span');
+  msgSpan.className = 'toast-msg font-mono text-sm';
+  msgSpan.textContent = String(msg || ''); // Aman dari DOM XSS
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'toast-close';
+  closeBtn.style.cssText = 'background:transparent;border:none;cursor:pointer;font-weight:bold;margin-left:auto;padding:0 4px;font-family:monospace;font-size:13px;';
+  closeBtn.textContent = '✕';
+  closeBtn.onclick = () => toast.remove();
+
+  toast.appendChild(labelSpan);
+  toast.appendChild(msgSpan);
+  toast.appendChild(closeBtn);
   container.appendChild(toast);
 
   setTimeout(() => {
@@ -938,9 +979,7 @@ function showToast(msg, type = 'info') {
   }, 4000);
 }
 
-// ============================================
-// AUTO-REFRESH (Poll setiap 5 detik jika fallback lokal)
-// ============================================
+// Polling fallback lokal jika offline
 function startPolling() {
   if (state.pollInterval) clearInterval(state.pollInterval);
   state.pollInterval = setInterval(() => {
@@ -951,9 +990,7 @@ function startPolling() {
   }, 5000);
 }
 
-// ============================================
-// HELPER: Format Tanggal
-// ============================================
+// Format tanggal dan waktu
 function formatDate(str) {
   if (!str) return '-';
   const d = new Date(str);
@@ -961,9 +998,7 @@ function formatDate(str) {
        + ' ' + d.toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' });
 }
 
-// ============================================
-// ESP STATUS CHECK
-// ============================================
+// Monitoring status perangkat ESP8266
 async function checkEspStatus() {
   const dot  = document.getElementById('esp-dot');
   const text = document.getElementById('esp-status-text');
@@ -1074,14 +1109,22 @@ function updateActiveEventDisplay(eventData) {
   const titleEl = document.getElementById('active-event-title');
   const dateEl  = document.getElementById('active-event-date');
 
-  if (ev && ev.name) {
-    if (badgeEl) badgeEl.style.display = 'inline-flex';
+  if (ev && ev.name && ev.is_active == 1) {
+    if (badgeEl) {
+      badgeEl.style.display = 'inline-flex';
+      badgeEl.style.background = 'var(--color-yellow)';
+      badgeEl.style.color = '#000000';
+    }
     if (titleEl) titleEl.textContent = ev.name;
     if (dateEl)  dateEl.textContent = ev.event_date ? formatDate(ev.event_date) : '';
   } else {
-    if (badgeEl) badgeEl.style.display = 'inline-flex';
-    if (titleEl) titleEl.textContent = 'Kegiatan Umum';
-    if (dateEl)  dateEl.textContent = getLocalDateString();
+    if (badgeEl) {
+      badgeEl.style.display = 'inline-flex';
+      badgeEl.style.background = '#e2e8f0';
+      badgeEl.style.color = '#475569';
+    }
+    if (titleEl) titleEl.textContent = 'Tidak Ada Acara Aktif';
+    if (dateEl)  dateEl.textContent = '-';
   }
 }
 
@@ -1122,15 +1165,15 @@ function renderEventsTable(events) {
       <td>
         <div class="flex gap-2">
           ${!isActive ? `
-            <button class="btn btn-warning btn-sm" onclick="setActiveEvent(${ev.id})">
+            <button class="btn btn-warning btn-sm" onclick="toggleEventActive(${ev.id}, true)">
               Aktifkan
             </button>
           ` : `
-            <button class="btn btn-secondary btn-sm" disabled style="opacity: 0.6;">
-              Aktif
+            <button class="btn btn-secondary btn-sm" onclick="toggleEventActive(${ev.id}, false)">
+              Nonaktifkan
             </button>
           `}
-          <button class="btn btn-danger btn-sm" onclick="deleteEvent(${ev.id}, '${escapeJsString(ev.name)}')">
+          <button class="btn btn-danger btn-sm" onclick="deleteEvent(${ev.id})">
             Hapus
           </button>
         </div>
@@ -1191,38 +1234,49 @@ async function submitCreateEvent() {
   }
 }
 
-async function setActiveEvent(id) {
+async function toggleEventActive(id, activate) {
+  const action = activate ? 'set_active' : 'set_inactive';
   try {
     const res = await fetch(API.events, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, action: 'set_active' })
+      body: JSON.stringify({ id, action })
     });
     const data = await res.json();
     if (data.success) {
-      showToast('Acara presensi berhasil diaktifkan!', 'success');
+      showToast(activate ? 'Acara presensi berhasil diaktifkan!' : 'Acara presensi berhasil dinonaktifkan.', 'success');
       
-      const targetEv = state.events.find(e => e.id == id);
-      if (targetEv && typeof window.setActiveEventInFirebase === 'function') {
-        window.setActiveEventInFirebase({
-          id: targetEv.id,
-          name: targetEv.name,
-          date: targetEv.event_date
-        });
+      const targetEv = (state.events || []).find(e => e.id == id);
+      if (typeof window.setActiveEventInFirebase === 'function') {
+        if (activate && targetEv) {
+          window.setActiveEventInFirebase({
+            id: targetEv.id,
+            name: targetEv.name,
+            date: targetEv.event_date
+          });
+        } else {
+          window.setActiveEventInFirebase(null);
+        }
       }
 
       loadEvents();
       loadDashboard();
     } else {
-      showToast(data.message || 'Gagal mengaktifkan acara', 'danger');
+      showToast(data.message || 'Gagal mengubah status acara', 'danger');
     }
   } catch (e) {
     console.error(e);
-    showToast('Gagal mengubah acara aktif', 'danger');
+    showToast('Gagal mengubah status acara aktif', 'danger');
   }
 }
 
-async function deleteEvent(id, name) {
+function setActiveEvent(id) {
+  return toggleEventActive(id, true);
+}
+
+async function deleteEvent(id) {
+  const ev = (state.events || []).find(e => e.id == id);
+  const name = ev ? ev.name : 'Acara';
   if (!confirm(`Yakin ingin menghapus program kerja "${name}"?\nData presensi lama tidak akan hilang tetapi status acara akan dilepas.`)) return;
 
   try {
@@ -1234,7 +1288,14 @@ async function deleteEvent(id, name) {
     const data = await res.json();
     if (data.success) {
       showToast('Acara berhasil dihapus', 'success');
+
+      // Jika acara yang dihapus sedang aktif, kosongkan di Firebase Cloud
+      if (ev && ev.is_active == 1 && typeof window.setActiveEventInFirebase === 'function') {
+        window.setActiveEventInFirebase(null);
+      }
+
       loadEvents();
+      loadDashboard();
     } else {
       showToast(data.message || 'Gagal menghapus acara', 'danger');
     }
@@ -1477,31 +1538,37 @@ async function submitBatchImport() {
     btnSubmit.textContent = 'Mengimport...';
   }
 
-  let successCount = 0;
-  let failCount = 0;
+  try {
+    // 1. Simpan massal ke MySQL via batch API
+    const res = await fetch(API.students, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ batch: true, students: importedRowsCache })
+    });
+    const data = await res.json();
 
-  for (const item of importedRowsCache) {
-    try {
-      if (typeof window.registerUserToFirebase === 'function') {
-        await window.registerUserToFirebase(item.uid, item.name, item.nim);
+    // 2. Sinkronkan ke Firebase jika fungsi tersedia
+    if (typeof window.registerUserToFirebase === 'function' && window.isFirebaseConnected) {
+      for (const item of importedRowsCache) {
+        try {
+          await window.registerUserToFirebase(item.uid, item.name, item.nim);
+        } catch (e) {}
       }
-
-      await fetch(API.students, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(item)
-      });
-
-      successCount++;
-    } catch (e) {
-      failCount++;
     }
-  }
 
-  showToast(`Selesai! Berhasil mengimport ${successCount} anggota.`, 'success');
-  closeImportModal();
-  loadStudents();
-  loadDashboard();
+    if (data.success) {
+      showToast(data.message || `Berhasil mengimport ${importedRowsCache.length} mahasiswa!`, 'success');
+    } else {
+      showToast(data.message || 'Gagal mengimport data', 'danger');
+    }
+  } catch (e) {
+    console.error('Batch import error:', e);
+    showToast('Terjadi kesalahan saat mengimport data', 'danger');
+  } finally {
+    closeImportModal();
+    loadStudents();
+    loadDashboard();
+  }
 }
 
 // Administrator password management
@@ -1624,11 +1691,20 @@ document.addEventListener('DOMContentLoaded', () => {
   window.renderStudentsTable = renderStudentsTable;
   window.renderCloudStudents = renderCloudStudents;
   window.openRegisterModal = openRegisterModal;
+  window.closeRegisterModal = closeRegisterModal;
+  window.submitRegister = submitRegister;
   window.openAddManualModal = openAddManualModal;
+  window.openEditModal = openEditModal;
+  window.closeEditModal = closeEditModal;
+  window.submitEdit = submitEdit;
+  window.deleteStudent = deleteStudent;
+  window.searchStudents = searchStudents;
+  window.clearRekapByDate = clearRekapByDate;
   window.openCreateEventModal = openCreateEventModal;
   window.closeCreateEventModal = closeCreateEventModal;
   window.submitCreateEvent = submitCreateEvent;
   window.setActiveEvent = setActiveEvent;
+  window.toggleEventActive = toggleEventActive;
   window.deleteEvent = deleteEvent;
   window.openAlphaModal = openAlphaModal;
   window.closeAlphaModal = closeAlphaModal;

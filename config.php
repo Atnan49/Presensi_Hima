@@ -54,6 +54,8 @@ function getDB() {
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES   => false,
             ]);
+            // Sinkronkan timezone MySQL dengan Asia/Jakarta (UTC+7)
+            $pdo->exec("SET time_zone = '+07:00'");
             // Pastikan seluruh tabel otomatis tersedia
             ensureDatabaseTables($pdo);
         } catch (PDOException $e) {
@@ -73,6 +75,7 @@ function getDB() {
                         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                         PDO::ATTR_EMULATE_PREPARES   => false,
                     ]);
+                    $pdo->exec("SET time_zone = '+07:00'");
                     ensureDatabaseTables($pdo);
                     return $pdo;
                 } catch (Exception $ex) {
@@ -80,14 +83,17 @@ function getDB() {
                 }
             }
 
-            // Jika dipanggil dari API json
+            // Catat error teknis ke log internal server
+            error_log("Database connection failure: " . $e->getMessage());
+
+            // Jika dipanggil dari API json, jangan bocorkan kredensial atau detail server
             if (strpos($_SERVER['REQUEST_URI'] ?? '', 'api/') !== false) {
                 http_response_code(500);
-                die(json_encode(['success' => false, 'message' => 'Database Connection Error: ' . $e->getMessage()]));
+                die(json_encode(['success' => false, 'message' => 'Gagal terhubung ke database. Silakan periksa konfigurasi server.']));
             }
 
-            // Jika dipanggil dari halaman web, throw exception agar ditangani oleh try-catch di login.php / index.php
-            throw new Exception("Gagal terhubung ke database MySQL (" . DB_HOST . ":" . DB_PORT . "). Detail: " . $e->getMessage());
+            // Jika dipanggil dari halaman web, lempar pesan ramah pengguna
+            throw new Exception("Gagal terhubung ke database MySQL. Silakan hubungi administrator.");
         }
     }
     return $pdo;
@@ -174,22 +180,26 @@ function ensureDatabaseTables($pdo) {
                 $pdo->exec("ALTER TABLE `attendance` ADD COLUMN `session_name` VARCHAR(60) DEFAULT 'Sesi 1 (Datang)' AFTER `session_id`");
                 $pdo->exec("ALTER TABLE `attendance` ADD KEY `idx_session_id` (`session_id`)");
             }
+            // Tambahkan index unik untuk student_id + tap_date + session_id guna mencegah race condition double tap
+            $idxCheck = $pdo->query("SHOW INDEX FROM `attendance` WHERE Key_name = 'uniq_student_date_session'")->fetch();
+            if (!$idxCheck) {
+                $pdo->exec("ALTER TABLE `attendance` ADD UNIQUE KEY `uniq_student_date_session` (`student_id`, `tap_date`, `session_id`)");
+            }
         } catch (Exception $e) {
-            // Kolom mungkin sudah ada atau DDL terbatas
+            // Kolom atau index mungkin sudah ada
         }
 
-        // Inisialisasi event default jika belum ada acara aktif
-        $eventCount = $pdo->query("SELECT COUNT(*) FROM `events`")->fetchColumn();
-        if ($eventCount == 0) {
-            $pdo->exec("INSERT INTO `events` (`name`, `description`, `event_date`, `is_active`) VALUES ('Kegiatan HIMA Umum', 'Presensi kegiatan reguler / program kerja HIMA', CURDATE(), 1)");
-        }
-
-        // 6. Inisialisasi admin default jika kosong
+        // Inisialisasi admin & event default HANYA jika database baru di-setup (admins kosong)
         $count = $pdo->query("SELECT COUNT(*) FROM `admins`")->fetchColumn();
         if ($count == 0) {
             $defaultHash = password_hash('admin123', PASSWORD_DEFAULT);
             $stmt = $pdo->prepare("INSERT INTO `admins` (`username`, `password_hash`, `name`) VALUES (?, ?, ?)");
             $stmt->execute(['admin', $defaultHash, 'Administrator Presensi']);
+
+            $eventCount = $pdo->query("SELECT COUNT(*) FROM `events`")->fetchColumn();
+            if ($eventCount == 0) {
+                $pdo->exec("INSERT INTO `events` (`name`, `description`, `event_date`, `is_active`) VALUES ('Kegiatan HIMA Umum', 'Presensi kegiatan reguler / program kerja HIMA', CURDATE(), 1)");
+            }
         }
     } catch (Exception $e) {
         // Abaikan jika database user tidak memiliki privilege DDL tertentu
@@ -263,16 +273,16 @@ function checkApiAuth() {
 function setCorsHeaders() {
     header('Content-Type: application/json; charset=UTF-8');
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-    $allowedHosts = ['localhost', '127.0.0.1'];
-    $originHost = parse_url($origin, PHP_URL_HOST);
+    $serverHost = $_SERVER['SERVER_NAME'] ?? 'localhost';
+    $allowedHosts = ['localhost', '127.0.0.1', $serverHost];
+    $originHost = parse_url($origin, PHP_URL_HOST) ?: '';
     
-    if ($origin && ($originHost === $_SERVER['SERVER_NAME'] || in_array($originHost, $allowedHosts))) {
+    if ($origin && in_array($originHost, $allowedHosts, true)) {
         header("Access-Control-Allow-Origin: $origin");
-    } else {
-        header('Access-Control-Allow-Origin: *');
+        header('Access-Control-Allow-Credentials: true');
     }
     header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-    header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+    header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-CSRF-Token');
     if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
         http_response_code(200);
         exit;

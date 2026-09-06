@@ -1,12 +1,5 @@
 <?php
-// ============================================
-// api/students.php
-// CRUD Mahasiswa
-// GET    → daftar semua mahasiswa + UID
-// POST   → tambah mahasiswa baru (daftarkan UID)
-// PUT    → update data mahasiswa
-// DELETE → hapus mahasiswa
-// ============================================
+// API master data mahasiswa dan batch import
 
 require_once '../config.php';
 setCorsHeaders();
@@ -31,10 +24,46 @@ if ($method === 'GET') {
     sendJSON(['success' => true, 'data' => $students]);
 }
 
-// --- POST: Tambah mahasiswa baru ---
+// --- POST: Tambah mahasiswa baru (Tunggal atau Batch) ---
 if ($method === 'POST') {
     checkApiAuth();
-    $body = json_decode(file_get_contents('php://input'), true);
+    $body = json_decode(file_get_contents('php://input'), true) ?: [];
+
+    // Opsi 1: Batch Import massal dalam transaksi tunggal
+    if (!empty($body['batch']) && is_array($body['students'] ?? null)) {
+        $studentsList = $body['students'];
+        $inserted = 0;
+        $db->beginTransaction();
+        try {
+            $stmtUpsert = $db->prepare("
+                INSERT INTO students (uid, name, nim, is_active)
+                VALUES (?, ?, ?, 1)
+                ON DUPLICATE KEY UPDATE name = VALUES(name), nim = VALUES(nim), is_active = 1
+            ");
+            $stmtDelUnknown = $db->prepare("DELETE FROM unknown_cards WHERE uid = ?");
+
+            foreach ($studentsList as $item) {
+                $u = strtoupper(trim($item['uid'] ?? ''));
+                $n = strip_tags(trim($item['name'] ?? ''));
+                $m = strip_tags(trim($item['nim'] ?? ''));
+                if (!empty($u) && !empty($n)) {
+                    $stmtUpsert->execute([$u, $n, $m]);
+                    $stmtDelUnknown->execute([$u]);
+                    $inserted++;
+                }
+            }
+            $db->commit();
+            sendJSON([
+                'success' => true,
+                'message' => "Berhasil memproses import {$inserted} data mahasiswa",
+                'count'   => $inserted
+            ]);
+        } catch (Exception $e) {
+            $db->rollBack();
+            sendJSON(['success' => false, 'message' => 'Gagal memproses batch import data'], 500);
+        }
+    }
+
     $uid  = strtoupper(trim($body['uid'] ?? ''));
     $name = strip_tags(trim($body['name'] ?? ''));
     $nim  = strip_tags(trim($body['nim'] ?? ''));

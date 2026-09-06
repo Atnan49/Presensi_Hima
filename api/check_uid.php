@@ -1,15 +1,6 @@
 <?php
-// ============================================
-// api/check_uid.php
-// Dipanggil ESP8266 saat kartu di-tap
-// Method: GET
-// Parameter: ?uid=XXXXXXXX
-//
-// Response JSON:
-// - status: "registered" | "unknown" | "already_attended"
-// - name: nama mahasiswa (jika registered)
-// - message: pesan untuk ditampilkan di LCD
-// ============================================
+// API tap kartu RFID dari perangkat IoT (ESP8266)
+// Parameter: ?uid=XXXXXXXX&session_id=sesi_1
 
 require_once '../config.php';
 setCorsHeaders();
@@ -58,33 +49,75 @@ if (!$student) {
     exit;
 }
 
-// 2. UID terdaftar → cek apakah sudah absen hari ini
+// 2. Tentukan sesi aktif & acara aktif
 $today = date('Y-m-d');
-$stmtAttend = $db->prepare("SELECT id FROM attendance WHERE student_id = ? AND tap_date = ? LIMIT 1");
-$stmtAttend->execute([$student['id'], $today]);
+$sessionId = trim($_GET['session_id'] ?? 'sesi_1');
+if (empty($sessionId)) $sessionId = 'sesi_1';
+
+$sessionNames = [
+    'sesi_1' => 'Sesi 1 (Datang)',
+    'sesi_2' => 'Sesi 2 (Ishoma)',
+    'sesi_3' => 'Sesi 3 (Pulang)'
+];
+$sessionName = $sessionNames[$sessionId] ?? ucfirst($sessionId);
+
+// Dapatkan acara aktif
+$activeEvent = $db->query("SELECT id, name FROM events WHERE is_active = 1 LIMIT 1")->fetch();
+$eventId = $activeEvent ? (int)$activeEvent['id'] : null;
+$eventName = $activeEvent ? $activeEvent['name'] : 'Kegiatan HIMA Umum';
+
+// 3. Cek apakah sudah absen pada sesi ini di tanggal yang sama
+$stmtAttend = $db->prepare("SELECT id FROM attendance WHERE student_id = ? AND tap_date = ? AND session_id = ? LIMIT 1");
+$stmtAttend->execute([$student['id'], $today, $sessionId]);
 $alreadyAttended = $stmtAttend->fetch();
 
 if ($alreadyAttended) {
     sendJSON([
-        'success'  => true,
-        'status'   => 'already_attended',
-        'uid'      => $uid,
-        'name'     => $student['name'],
-        'nim'      => $student['nim'],
-        'message'  => 'Sudah absen hari ini',
+        'success'    => true,
+        'status'     => 'already_attended',
+        'uid'        => $uid,
+        'name'       => $student['name'],
+        'nim'        => $student['nim'],
+        'session_id' => $sessionId,
+        'session'    => $sessionName,
+        'message'    => 'Sudah absen pada ' . $sessionName,
     ]);
     exit;
 }
 
-// 3. Belum absen hari ini → simpan absensi
-$db->prepare("INSERT INTO attendance (student_id, uid, tap_time, tap_date) VALUES (?, ?, NOW(), ?)")
-   ->execute([$student['id'], $uid, $today]);
+// 4. Belum absen pada sesi ini → simpan absensi dengan proteksi duplicate race condition
+try {
+    $stmtInsert = $db->prepare("
+        INSERT INTO attendance (student_id, event_id, session_id, session_name, uid, tap_time, tap_date)
+        VALUES (?, ?, ?, ?, ?, NOW(), ?)
+    ");
+    $stmtInsert->execute([$student['id'], $eventId, $sessionId, $sessionName, $uid, $today]);
+} catch (PDOException $e) {
+    // Tangkap bila terjadi duplicate entry dari double-tap bersamaan (Error Code 23000)
+    if ($e->getCode() == 23000 || strpos($e->getMessage(), 'Duplicate entry') !== false) {
+        sendJSON([
+            'success'    => true,
+            'status'     => 'already_attended',
+            'uid'        => $uid,
+            'name'       => $student['name'],
+            'nim'        => $student['nim'],
+            'session_id' => $sessionId,
+            'session'    => $sessionName,
+            'message'    => 'Sudah absen pada ' . $sessionName,
+        ]);
+        exit;
+    }
+    throw $e;
+}
 
 sendJSON([
-    'success' => true,
-    'status'  => 'registered',
-    'uid'     => $uid,
-    'name'    => $student['name'],
-    'nim'     => $student['nim'],
-    'message' => 'Selamat datang, ' . $student['name'],
+    'success'    => true,
+    'status'     => 'registered',
+    'uid'        => $uid,
+    'name'       => $student['name'],
+    'nim'        => $student['nim'],
+    'session_id' => $sessionId,
+    'session'    => $sessionName,
+    'event_name' => $eventName,
+    'message'    => 'Selamat datang, ' . $student['name'],
 ]);

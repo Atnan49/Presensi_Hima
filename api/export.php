@@ -1,12 +1,5 @@
 <?php
-// ============================================
-// api/export.php
-// Export data absensi ke CSV atau Excel (.xls)
-// GET?type=attendance&date=YYYY-MM-DD → export absensi tanggal tertentu
-// GET?type=attendance&all=1           → export semua absensi
-// GET?type=students                   → export daftar mahasiswa
-// GET?format=csv / format=xls         → format output (default xls)
-// ============================================
+// API export data presensi format CSV dan Excel
 
 require_once '../config.php';
 
@@ -21,6 +14,16 @@ try {
     echo "Gagal menghubungkan ke database MySQL lokal: " . $e->getMessage() . "\n";
     echo "Tip: Jika Anda menggunakan Firebase Cloud, gunakan tombol download langsung dari antarmuka Web Dashboard.\n";
     exit;
+}
+
+// Helper pencegah CSV / Excel Formula Injection
+function sanitizeCsvFormula($val) {
+    if ($val === null || $val === '') return '-';
+    $str = (string)$val;
+    if (isset($str[0]) && in_array($str[0], ['=', '+', '-', '@', "\t", "\r"], true)) {
+        return "'" . $str;
+    }
+    return $str;
 }
 
 // --- EXPORT DAFTAR MAHASISWA ---
@@ -48,7 +51,14 @@ if ($type === 'students') {
         fputcsv($out, ['']);
         fputcsv($out, ['NO', 'UID KARTU', 'NAMA MAHASISWA', 'NIM', 'TOTAL HADIR', 'TERDAFTAR SEJAK']);
         foreach ($rows as $i => $r) {
-            fputcsv($out, [$i + 1, $r['uid'], $r['name'], $r['nim'] ?: '-', $r['total_hadir'] . 'x', $r['created_at']]);
+            fputcsv($out, [
+                $i + 1,
+                sanitizeCsvFormula($r['uid']),
+                sanitizeCsvFormula($r['name']),
+                sanitizeCsvFormula($r['nim'] ?: '-'),
+                $r['total_hadir'] . 'x',
+                sanitizeCsvFormula($r['created_at'])
+            ]);
         }
         fclose($out);
         exit;
@@ -197,7 +207,16 @@ if ($format === 'csv') {
     fputcsv($out, ['']);
     fputcsv($out, ['NO', 'UID KARTU', 'NAMA MAHASISWA', 'NIM', 'SESI PRESENSI', 'TANGGAL', 'JAM TAP', 'STATUS']);
     foreach ($rows as $i => $r) {
-        fputcsv($out, [$i + 1, $r['uid'], $r['name'], $r['nim'] ?: '-', $r['session_name'], $r['tanggal'], $r['jam'], 'HADIR (TERCATAT)']);
+        fputcsv($out, [
+            $i + 1,
+            sanitizeCsvFormula($r['uid']),
+            sanitizeCsvFormula($r['name']),
+            sanitizeCsvFormula($r['nim'] ?: '-'),
+            sanitizeCsvFormula($r['session_name']),
+            sanitizeCsvFormula($r['tanggal']),
+            sanitizeCsvFormula($r['jam']),
+            'HADIR (TERCATAT)'
+        ]);
     }
     fclose($out);
     exit;

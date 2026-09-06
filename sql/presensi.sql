@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS `attendance` (
   KEY `idx_tap_date` (`tap_date`),
   KEY `idx_event_id` (`event_id`),
   KEY `idx_session_id` (`session_id`),
+  UNIQUE KEY `uniq_student_date_session` (`student_id`, `tap_date`, `session_id`),
   CONSTRAINT `fk_attendance_student` FOREIGN KEY (`student_id`) REFERENCES `students` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

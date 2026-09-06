@@ -1,12 +1,5 @@
 <?php
-// ============================================
-// api/events.php
-// CRUD Program Kerja / Acara HIMA
-// GET    → daftar semua acara + info acara aktif
-// POST   → buat acara baru
-// PUT    → edit acara / ubah acara aktif
-// DELETE → hapus acara
-// ============================================
+// API program kerja dan acara organisasi HIMA
 
 require_once '../config.php';
 setCorsHeaders();
@@ -92,6 +85,14 @@ if ($method === 'PUT') {
         sendJSON(['success' => true, 'message' => 'Acara berhasil diaktifkan untuk presensi']);
     }
 
+    // Aksi khusus: nonaktifkan acara
+    if ($action === 'set_inactive') {
+        $stmt = $db->prepare("UPDATE events SET is_active = 0 WHERE id = ?");
+        $stmt->execute([$id]);
+
+        sendJSON(['success' => true, 'message' => 'Acara berhasil dinonaktifkan']);
+    }
+
     // Update detail acara
     $name        = strip_tags(trim($body['name'] ?? ''));
     $description = strip_tags(trim($body['description'] ?? ''));
@@ -129,9 +130,11 @@ if ($method === 'DELETE') {
 
     if ($event && $event['is_active'] == 1) {
         // Cari acara lain untuk dijadikan aktif sebelum dihapus
-        $other = $db->query("SELECT id FROM events WHERE id != $id ORDER BY id DESC LIMIT 1")->fetch();
+        $otherStmt = $db->prepare("SELECT id FROM events WHERE id != ? ORDER BY id DESC LIMIT 1");
+        $otherStmt->execute([$id]);
+        $other = $otherStmt->fetch();
         if ($other) {
-            $db->exec("UPDATE events SET is_active = 1 WHERE id = " . (int)$other['id']);
+            $db->prepare("UPDATE events SET is_active = 1 WHERE id = ?")->execute([$other['id']]);
         }
     }
 

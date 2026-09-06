@@ -12,14 +12,13 @@
 header("Content-Type: application/json; charset=utf-8");
 header("Access-Control-Allow-Origin: *");   // izinkan Google Apps Script
 
-// ── Token keamanan sederhana ─────────────────────────────────
-// Ganti dengan string acak yang hanya kamu tahu
-define('SECRET_TOKEN', 'presensi_rfid_2024');
+// ── Token keamanan akses Google Apps Script ──────────────────
+$secretToken = getenv('SHEETS_SECRET_TOKEN') ?: 'presensi_rfid_2024';
+$token       = (string)($_GET['token'] ?? '');
 
-$token = $_GET['token'] ?? '';
-if ($token !== SECRET_TOKEN) {
+if (empty($token) || !hash_equals($secretToken, $token)) {
     http_response_code(403);
-    echo json_encode(["status" => "error", "pesan" => "Token tidak valid"]);
+    echo json_encode(["status" => "error", "pesan" => "Akses ditolak: Token otentikasi tidak valid"]);
     exit;
 }
 
