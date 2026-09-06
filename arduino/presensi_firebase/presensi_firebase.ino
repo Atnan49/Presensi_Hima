@@ -28,6 +28,7 @@
  */
 
 #include <Arduino.h>
+#include <time.h>
 #include <ESP8266WiFi.h>
 #include <SPI.h>
 #include <Adafruit_PN532.h>
@@ -160,6 +161,11 @@ void setupWiFi() {
   String ipESP = WiFi.localIP().toString();
   Serial.println("\n[WiFi] Terhubung! IP: " + ipESP);
   lcdPrint("WiFi Terhubung!", ipESP.c_str());
+
+  // Sinkronisasi Waktu NTP (WIB: UTC+7 = 7 * 3600)
+  configTime(7 * 3600, 0, "pool.ntp.org", "time.google.com");
+  Serial.println("[NTP] Memulai sinkronisasi waktu Internet (WIB)...");
+
   delay(2000);
 }
 
@@ -225,15 +231,73 @@ void prosesTapKartu(String uid) {
   if (Firebase.RTDB.getString(&fbdo, pathName) && fbdo.dataType() == "string" && fbdo.stringData().length() > 0 && fbdo.stringData() != "null") {
     String nama = fbdo.stringData();
     
-    Serial.println("[OK] Absen Berhasil: " + nama);
+    // Ambil waktu dari NTP
+    time_t now = time(nullptr);
+    struct tm* ptm = localtime(&now);
+
+    char waktuBuf[16] = "00.00";
+    char dateBuf[16] = "today";
+    bool ntpReady = (ptm && ptm->tm_year > 100);
+
+    if (ntpReady) {
+      snprintf(waktuBuf, sizeof(waktuBuf), "%02d.%02d", ptm->tm_hour, ptm->tm_min);
+      snprintf(dateBuf, sizeof(dateBuf), "%04d-%02d-%02d", ptm->tm_year + 1900, ptm->tm_mon + 1, ptm->tm_mday);
+    }
+
+    // Ambil info sesi aktif jika ada di /active_session (default: sesi_1)
+    String sessionId = "sesi_1";
+    String sessionName = "Sesi 1 (Datang)";
+    if (Firebase.RTDB.getString(&fbdo, "/active_session/id") && fbdo.dataType() == "string" && fbdo.stringData().length() > 0 && fbdo.stringData() != "null") {
+      sessionId = fbdo.stringData();
+    }
+    if (Firebase.RTDB.getString(&fbdo, "/active_session/name") && fbdo.dataType() == "string" && fbdo.stringData().length() > 0 && fbdo.stringData() != "null") {
+      sessionName = fbdo.stringData();
+    }
+
+    // Cek apakah mahasiswa sudah tap pada SESI aktif hari ini untuk mencegah tap berulang dalam sesi yang sama
+    String pathToday = "/attendance_today/" + String(dateBuf) + "_" + sessionId + "/" + uid;
+    if (Firebase.RTDB.getBool(&fbdo, pathToday) && fbdo.dataType() == "boolean" && fbdo.boolData() == true) {
+      Serial.println("[INFO] Kartu sudah absen di sesi " + sessionName + ": " + nama);
+      buzzAlready();
+      lcdPrint("Sudah Absen!", sessionName.substring(0, 16).c_str());
+      delay(1500);
+      lcdPrint("Tap Kartu...", "");
+      return;
+    }
+
+    // Tandai sudah tap pada sesi ini di cloud
+    Firebase.RTDB.setBool(&fbdo, pathToday, true);
+
+    // Ambil info nama acara aktif jika tersedia di /active_event/name
+    String eventName = "";
+    if (Firebase.RTDB.getString(&fbdo, "/active_event/name") && fbdo.dataType() == "string") {
+      eventName = fbdo.stringData();
+    }
+
+    Serial.println("[OK] Absen Berhasil (" + sessionName + "): " + nama);
     buzzSuccess();
-    lcdWelcome(nama);
+    lcdPrint(sessionName.substring(0, 16).c_str(), nama.substring(0, 16).c_str());
+    delay(1200);
 
     // Kirim log absen ke Firebase (/log_presensi)
     FirebaseJson logData;
     logData.set("uid", uid);
     logData.set("name", nama);
-    logData.set("timestamp", (int)millis());
+    logData.set("session_id", sessionId);
+    logData.set("session_name", sessionName);
+
+    if (eventName.length() > 0 && eventName != "null") {
+      logData.set("event_name", eventName);
+    }
+
+    if (ntpReady) {
+      logData.set("waktu", waktuBuf);
+      logData.set("date", dateBuf);
+      logData.set("timestamp", (double)now * 1000);
+    } else {
+      // Fallback ke Firebase Server Timestamp
+      logData.set("timestamp/.sv", "timestamp");
+    }
 
     Firebase.RTDB.pushJSON(&fbdo, "/log_presensi", &logData);
 

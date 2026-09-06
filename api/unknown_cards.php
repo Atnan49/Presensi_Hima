@@ -23,6 +23,7 @@ if ($method === 'GET') {
 }
 
 if ($method === 'DELETE') {
+    checkApiAuth();
     $body = json_decode(file_get_contents('php://input'), true);
     $uid  = strtoupper(trim($body['uid'] ?? ''));
     if (empty($uid)) {

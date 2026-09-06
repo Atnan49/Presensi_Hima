@@ -33,10 +33,11 @@ if ($method === 'GET') {
 
 // --- POST: Tambah mahasiswa baru ---
 if ($method === 'POST') {
+    checkApiAuth();
     $body = json_decode(file_get_contents('php://input'), true);
     $uid  = strtoupper(trim($body['uid'] ?? ''));
-    $name = trim($body['name'] ?? '');
-    $nim  = trim($body['nim'] ?? '');
+    $name = strip_tags(trim($body['name'] ?? ''));
+    $nim  = strip_tags(trim($body['nim'] ?? ''));
 
     if (empty($uid) || empty($name)) {
         sendJSON(['success' => false, 'message' => 'UID dan nama wajib diisi'], 400);
@@ -64,34 +65,58 @@ if ($method === 'POST') {
 
 // --- PUT: Update data mahasiswa ---
 if ($method === 'PUT') {
+    checkApiAuth();
     $body = json_decode(file_get_contents('php://input'), true);
     $id   = (int)($body['id'] ?? 0);
-    $name = trim($body['name'] ?? '');
-    $nim  = trim($body['nim'] ?? '');
+    $name = strip_tags(trim($body['name'] ?? ''));
+    $nim  = strip_tags(trim($body['nim'] ?? ''));
     $uid  = strtoupper(trim($body['uid'] ?? ''));
     $active = isset($body['is_active']) ? (int)$body['is_active'] : 1;
 
-    if (!$id || empty($name)) {
-        sendJSON(['success' => false, 'message' => 'ID dan nama wajib diisi'], 400);
+    if (empty($name)) {
+        sendJSON(['success' => false, 'message' => 'Nama mahasiswa wajib diisi'], 400);
     }
 
-    $db->prepare("UPDATE students SET name=?, nim=?, uid=?, is_active=? WHERE id=?")
-       ->execute([$name, $nim, $uid, $active, $id]);
+    if ($id > 0) {
+        $db->prepare("UPDATE students SET name=?, nim=?, uid=?, is_active=? WHERE id=?")
+           ->execute([$name, $nim, $uid, $active, $id]);
+    } elseif (!empty($uid)) {
+        // Fallback update berdasarkan UID jika ID tidak ada (misal dari Cloud Firebase)
+        $check = $db->prepare("SELECT id FROM students WHERE uid = ?");
+        $check->execute([$uid]);
+        $existing = $check->fetch();
+
+        if ($existing) {
+            $db->prepare("UPDATE students SET name=?, nim=?, is_active=? WHERE uid=?")
+               ->execute([$name, $nim, $active, $uid]);
+        } else {
+            // Jika belum ada di MySQL, insert otomatis
+            $db->prepare("INSERT INTO students (uid, name, nim, is_active) VALUES (?, ?, ?, ?)")
+               ->execute([$uid, $name, $nim, $active]);
+        }
+    } else {
+        sendJSON(['success' => false, 'message' => 'ID atau UID mahasiswa wajib diisi'], 400);
+    }
 
     sendJSON(['success' => true, 'message' => 'Data berhasil diperbarui']);
 }
 
 // --- DELETE: Hapus mahasiswa ---
 if ($method === 'DELETE') {
+    checkApiAuth();
     $body = json_decode(file_get_contents('php://input'), true);
     $id   = (int)($body['id'] ?? 0);
+    $uid  = strtoupper(trim($body['uid'] ?? ''));
 
-    if (!$id) {
-        sendJSON(['success' => false, 'message' => 'ID tidak valid'], 400);
+    if ($id > 0) {
+        $db->prepare("DELETE FROM students WHERE id = ?")->execute([$id]);
+        sendJSON(['success' => true, 'message' => 'Mahasiswa berhasil dihapus']);
+    } elseif (!empty($uid)) {
+        $db->prepare("DELETE FROM students WHERE uid = ?")->execute([$uid]);
+        sendJSON(['success' => true, 'message' => 'Mahasiswa berhasil dihapus']);
+    } else {
+        sendJSON(['success' => false, 'message' => 'ID atau UID tidak valid'], 400);
     }
-
-    $db->prepare("DELETE FROM students WHERE id = ?")->execute([$id]);
-    sendJSON(['success' => true, 'message' => 'Mahasiswa berhasil dihapus']);
 }
 
 sendJSON(['success' => false, 'message' => 'Method tidak diizinkan'], 405);

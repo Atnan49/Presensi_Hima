@@ -16,63 +16,121 @@ $method = $_SERVER['REQUEST_METHOD'];
 if ($method === 'GET') {
     $date      = isset($_GET['date'])       ? $_GET['date']              : date('Y-m-d');
     $studentId = isset($_GET['student_id']) ? (int)$_GET['student_id']  : 0;
+    $eventId   = isset($_GET['event_id'])   ? (int)$_GET['event_id']    : 0;
+    $sessionId = trim($_GET['session_id'] ?? '');
     $all       = isset($_GET['all'])        && $_GET['all'] === '1';
 
-    // Jika diminta semua rekap
-    if ($all) {
-        $stmt = $db->prepare("
+    // Jika diminta berdasarkan event_id tertentu
+    if ($eventId > 0) {
+        $sql = "
             SELECT a.id, a.uid, s.name, s.nim,
                    DATE_FORMAT(a.tap_time, '%d/%m/%Y %H:%i:%s') AS waktu,
-                   a.tap_date
+                   a.tap_date, a.event_id,
+                   COALESCE(a.session_id, 'sesi_1') AS session_id,
+                   COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
+                   COALESCE(e.name, 'Acara') AS event_name
             FROM attendance a
             JOIN students s ON s.id = a.student_id
-            ORDER BY a.tap_time DESC
-            LIMIT 500
-        ");
-        $stmt->execute();
-    } elseif ($studentId) {
+            LEFT JOIN events e ON e.id = a.event_id
+            WHERE a.event_id = ?
+        ";
+        $params = [$eventId];
+        if (!empty($sessionId)) {
+            $sql .= " AND a.session_id = ?";
+            $params[] = $sessionId;
+        }
+        $sql .= " ORDER BY a.tap_time DESC";
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+    } elseif ($all) {
+        // Semua rekap
+        $sql = "
+            SELECT a.id, a.uid, s.name, s.nim,
+                   DATE_FORMAT(a.tap_time, '%d/%m/%Y %H:%i:%s') AS waktu,
+                   a.tap_date, a.event_id,
+                   COALESCE(a.session_id, 'sesi_1') AS session_id,
+                   COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
+                   COALESCE(e.name, 'Kegiatan HIMA') AS event_name
+            FROM attendance a
+            JOIN students s ON s.id = a.student_id
+            LEFT JOIN events e ON e.id = a.event_id
+        ";
+        $params = [];
+        if (!empty($sessionId)) {
+            $sql .= " WHERE a.session_id = ?";
+            $params[] = $sessionId;
+        }
+        $sql .= " ORDER BY a.tap_time DESC LIMIT 500";
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+    } elseif ($studentId > 0) {
         // Rekap per mahasiswa
         $stmt = $db->prepare("
             SELECT a.id, a.uid, s.name, s.nim,
                    DATE_FORMAT(a.tap_time, '%d/%m/%Y %H:%i:%s') AS waktu,
-                   a.tap_date
+                   a.tap_date, a.event_id,
+                   COALESCE(a.session_id, 'sesi_1') AS session_id,
+                   COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
+                   COALESCE(e.name, 'Kegiatan HIMA') AS event_name
             FROM attendance a
             JOIN students s ON s.id = a.student_id
+            LEFT JOIN events e ON e.id = a.event_id
             WHERE a.student_id = ?
             ORDER BY a.tap_time DESC
         ");
         $stmt->execute([$studentId]);
     } else {
         // Rekap per tanggal (default: hari ini)
-        $stmt = $db->prepare("
+        $sql = "
             SELECT a.id, a.uid, s.name, s.nim,
                    DATE_FORMAT(a.tap_time, '%d/%m/%Y %H:%i:%s') AS waktu,
-                   a.tap_date
+                   a.tap_date, a.event_id,
+                   COALESCE(a.session_id, 'sesi_1') AS session_id,
+                   COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
+                   COALESCE(e.name, 'Kegiatan HIMA') AS event_name
             FROM attendance a
             JOIN students s ON s.id = a.student_id
+            LEFT JOIN events e ON e.id = a.event_id
             WHERE a.tap_date = ?
-            ORDER BY a.tap_time ASC
-        ");
-        $stmt->execute([$date]);
+        ";
+        $params = [$date];
+        if (!empty($sessionId)) {
+            $sql .= " AND a.session_id = ?";
+            $params[] = $sessionId;
+        }
+        $sql .= " ORDER BY a.tap_time ASC";
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
     }
 
     $records = $stmt->fetchAll();
 
-    // Hitung statistik
-    $totalMhs   = $db->query("SELECT COUNT(*) FROM students WHERE is_active = 1")->fetchColumn();
-    $totalHadir = count($records);
+    // Hitung statistik dengan hadir unik (distinct student UID)
+    $totalMhs = (int)$db->query("SELECT COUNT(*) FROM students WHERE is_active = 1")->fetchColumn();
+    $uniqueUids = [];
+    foreach ($records as $r) {
+        if (!empty($r['uid'])) {
+            $uniqueUids[$r['uid']] = true;
+        }
+    }
+    $totalHadir = count($uniqueUids);
+    $totalAlpha = max(0, $totalMhs - $totalHadir);
 
     sendJSON([
         'success'      => true,
         'date'         => $date,
+        'event_id'     => $eventId,
+        'session_id'   => $sessionId,
         'total_hadir'  => $totalHadir,
-        'total_mhs'    => (int)$totalMhs,
+        'total_alpha'  => $totalAlpha,
+        'total_mhs'    => $totalMhs,
         'data'         => $records,
     ]);
 }
 
 // --- DELETE: Hapus data absensi ---
-if ($method === 'DELETE' || isset($_GET['action']) && $_GET['action'] === 'delete') {
+if ($method === 'DELETE' || (isset($_GET['action']) && $_GET['action'] === 'delete')) {
+    checkApiAuth();
     // Baca dari JSON body atau GET query param
     $rawInput = file_get_contents('php://input');
     $body     = json_decode($rawInput, true) ?: [];

@@ -17,6 +17,73 @@ export let cloudUnknownCards = [];
 export let cloudUsers = {};
 export let cloudLogs = [];
 
+// Helper untuk decode timestamp dari Firebase Push Key (cth: -O...)
+function getTimestampFromFirebasePushId(id) {
+  const PUSH_CHARS = '-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz';
+  if (!id || typeof id !== 'string' || id.length < 8) return null;
+  let time = 0;
+  for (let i = 0; i < 8; i++) {
+    const c = id.charAt(i);
+    const index = PUSH_CHARS.indexOf(c);
+    if (index === -1) return null;
+    time = time * 64 + index;
+  }
+  return time;
+}
+
+// Helper format tanggal lokal YYYY-MM-DD
+function getLocalDateString(d = new Date()) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// Helper ekstrak waktu & tanggal akurat dari log
+function parseLogDateTime(item, key) {
+  let waktuStr = item.waktu || null;
+  let dateStr = item.date || null;
+  let timestamp = null;
+
+  // 1. Cek jika item memiliki timestamp epoch valid
+  if (item.timestamp && typeof item.timestamp === 'number') {
+    if (item.timestamp > 1000000000000) {
+      timestamp = item.timestamp;
+    } else if (item.timestamp > 1000000000) {
+      timestamp = item.timestamp * 1000;
+    }
+  }
+
+  // 2. Jika tidak ada timestamp valid, decode dari Firebase Push Key
+  if (!timestamp && key) {
+    const decoded = getTimestampFromFirebasePushId(key);
+    if (decoded && decoded > 1577836800000 && decoded < 2524608000000) {
+      timestamp = decoded;
+    }
+  }
+
+  // 3. Konversi timestamp ke format waktu (HH.MM) & tanggal (YYYY-MM-DD)
+  if (timestamp) {
+    const dateObj = new Date(timestamp);
+    if (!waktuStr) {
+      waktuStr = dateObj.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace(/:/g, '.');
+    }
+    if (!dateStr) {
+      dateStr = getLocalDateString(dateObj);
+    }
+  }
+
+  // 4. Fallback jika sama sekali tidak ada data waktu
+  if (!waktuStr) {
+    waktuStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace(/:/g, '.');
+  }
+  if (!dateStr) {
+    dateStr = getLocalDateString(new Date());
+  }
+
+  return { waktu: waktuStr, date: dateStr, timestamp: timestamp || Date.now() };
+}
+
 export function initFirebaseListeners() {
   console.log("[Firebase] Menginisialisasi Realtime Listener...");
 
@@ -111,39 +178,48 @@ export function initFirebaseListeners() {
     }
   });
 
-  // 4. Realtime Listener: /log_presensi (Pushed by ESP8266 on every successful tap)
+  // 4. Realtime Listener: /log_presensi (Pushed by ESP8266 on every tap)
   const logPresensiRef = ref(db, "log_presensi");
   onValue(logPresensiRef, (snapshot) => {
     const data = snapshot.val();
     if (data && typeof data === 'object') {
       const keys = Object.keys(data);
       if (keys.length > 0) {
-        cloudLogs = keys.map((k, idx) => {
-          const item = data[k];
+        cloudLogs = keys.map((k) => {
+          const item = data[k] || {};
           const studentInfo = (cloudUsers && cloudUsers[item.uid]) || {};
+          const parsed = parseLogDateTime(item, k);
+
           return {
             id: k,
-            uid: item.uid,
+            uid: item.uid || '-',
             name: item.name || studentInfo.name || `Mahasiswa (${item.uid})`,
             nim: studentInfo.nim || item.nim || '-',
-            waktu: item.waktu || new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-            date: item.date || new Date().toISOString().split('T')[0]
+            session_id: item.session_id || 'sesi_1',
+            session_name: item.session_name || 'Sesi 1 (Datang)',
+            event_name: item.event_name || '',
+            waktu: parsed.waktu,
+            date: parsed.date,
+            timestamp: parsed.timestamp
           };
         });
 
+        // Urutkan dari yang terbaru ke terlama
+        cloudLogs.sort((a, b) => b.timestamp - a.timestamp);
         window.cloudLogs = cloudLogs;
 
-        const lastLog = cloudLogs[cloudLogs.length - 1];
-        console.log("[Firebase] Log Presensi Baru:", lastLog);
+        const latestLog = cloudLogs[0];
+        console.log("[Firebase] Log Presensi Terkini:", latestLog);
 
-        // Update Live Feed di Dashboard
-        if (typeof window.updateLiveFeed === 'function') {
-          window.updateLiveFeed(lastLog.name, lastLog.waktu);
+        // Update Live Feed di Dashboard dengan log terbaru
+        if (latestLog && typeof window.updateLiveFeed === 'function') {
+          window.updateLiveFeed(latestLog.name, latestLog.waktu);
         }
 
-        // Tampilkan Toast jika bukan saat halaman baru dibuka
-        if (!isInitialLoad && typeof window.showToast === 'function') {
-          window.showToast(`Presensi Berhasil: ${lastLog.name} (${lastLog.uid})`, 'success');
+        // Tampilkan Toast jika bukan saat halaman baru pertama kali dibuka
+        if (!isInitialLoad && latestLog && typeof window.showToast === 'function') {
+          const sessLabel = latestLog.session_name ? ` [${latestLog.session_name}]` : '';
+          window.showToast(`Presensi: ${latestLog.name}${sessLabel} (${latestLog.waktu})`, 'success');
         }
 
         // Refresh data dashboard & rekap
@@ -157,6 +233,28 @@ export function initFirebaseListeners() {
     } else {
       cloudLogs = [];
       window.cloudLogs = [];
+      if (typeof window.loadDashboard === 'function') window.loadDashboard();
+      if (typeof window.loadRekap === 'function') window.loadRekap();
+    }
+  });
+
+  // 5. Realtime Listener: /active_event (Acara/Program Kerja Aktif)
+  const activeEventRef = ref(db, "active_event");
+  onValue(activeEventRef, (snapshot) => {
+    const data = snapshot.val();
+    window.cloudActiveEvent = data;
+    if (typeof window.updateActiveEventDisplay === 'function') {
+      window.updateActiveEventDisplay(data);
+    }
+  });
+
+  // 6. Realtime Listener: /active_session (Sesi Presensi Aktif)
+  const activeSessionRef = ref(db, "active_session");
+  onValue(activeSessionRef, (snapshot) => {
+    const data = snapshot.val();
+    window.cloudActiveSession = data;
+    if (typeof window.updateActiveSessionDisplay === 'function') {
+      window.updateActiveSessionDisplay(data);
     }
   });
 
@@ -188,7 +286,33 @@ export async function registerUserToFirebase(uid, name, nim) {
   }
 }
 
-// Helper untuk menghapus user dari Firebase
+// Helper untuk sinkronisasi acara aktif ke Firebase
+export async function setActiveEventInFirebase(eventData) {
+  try {
+    const eventRef = ref(db, "active_event");
+    await set(eventRef, eventData);
+    console.log("[Firebase] Acara aktif berhasil disinkronkan ke cloud:", eventData);
+    return true;
+  } catch (error) {
+    console.error("[Firebase] Gagal update acara aktif di cloud:", error);
+    return false;
+  }
+}
+
+// Helper untuk sinkronisasi sesi presensi aktif ke Firebase
+export async function setActiveSessionInFirebase(sessionData) {
+  try {
+    const sessionRef = ref(db, "active_session");
+    await set(sessionRef, sessionData);
+    console.log("[Firebase] Sesi presensi aktif berhasil disinkronkan ke cloud:", sessionData);
+    return true;
+  } catch (error) {
+    console.error("[Firebase] Gagal update sesi aktif di cloud:", error);
+    return false;
+  }
+}
+
+// Helper untuk menghapus user dari cloud Firebase
 export async function deleteUserFromFirebase(uid) {
   try {
     const userRef = ref(db, `users/${uid}`);
@@ -201,9 +325,51 @@ export async function deleteUserFromFirebase(uid) {
   }
 }
 
+// Helper untuk menghapus rekap kehadiran berdasarkan tanggal (dengan konfirmasi ketat)
+export async function clearRekapByDate(targetDate) {
+  const date = targetDate || document.getElementById('rekap-date')?.value || getLocalDateString();
+  if (!date) return;
+
+  const confirmDate = prompt(`PERINGATAN: Tindakan ini akan menghapus permanen semua log presensi pada tanggal ${date}.\n\nKetik "${date}" di bawah untuk konfirmasi:`);
+  if (confirmDate !== date) {
+    if (confirmDate !== null && typeof window.showToast === 'function') {
+      window.showToast('Penghapusan dibatalkan (tanggal konfirmasi tidak cocok)', 'warning');
+    }
+    return;
+  }
+
+  try {
+    if (window.isFirebaseConnected) {
+      const logs = window.cloudLogs || [];
+      const logsToDelete = logs.filter(l => l.date === date);
+
+      if (logsToDelete.length === 0) {
+        if (typeof window.showToast === 'function') window.showToast(`Tidak ada data log pada tanggal ${date}`, 'info');
+        return;
+      }
+
+      for (const item of logsToDelete) {
+        if (item.id) {
+          await remove(ref(db, `log_presensi/${item.id}`));
+        }
+      }
+
+      if (typeof window.showToast === 'function') {
+        window.showToast(`Berhasil menghapus ${logsToDelete.length} data presensi (${date})`, 'success');
+      }
+    }
+  } catch (err) {
+    console.error("Gagal menghapus rekap tanggal:", err);
+    if (typeof window.showToast === 'function') window.showToast('Gagal menghapus rekap cloud', 'danger');
+  }
+}
+
 // Expose helper ke window
 window.registerUserToFirebase = registerUserToFirebase;
 window.deleteUserFromFirebase = deleteUserFromFirebase;
+window.setActiveEventInFirebase = setActiveEventInFirebase;
+window.setActiveSessionInFirebase = setActiveSessionInFirebase;
+window.clearRekapByDate = clearRekapByDate;
 
 // Jalankan otomatis saat script dimuat
 if (document.readyState === 'loading') {

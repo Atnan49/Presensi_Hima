@@ -1,3 +1,8 @@
+<?php
+require_once 'config.php';
+checkAuth();
+$currentUser = getCurrentUser();
+?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -16,7 +21,7 @@
     <div class="sidebar-logo">
       <div class="logo-box">RFID</div>
       <h1>Sistem Presensi<br>Mahasiswa</h1>
-      <div class="version">ESP8266 + RFID • v1.0</div>
+      <div class="version">ESP8266 + RFID • v1.1</div>
     </div>
 
     <nav class="sidebar-nav">
@@ -42,9 +47,31 @@
         <span class="nav-indicator">[04]</span>
         <span>Rekap Absensi</span>
       </div>
+
+      <div class="nav-item" data-panel="events" onclick="showPanel('events')">
+        <span class="nav-indicator">[05]</span>
+        <span>Program Kerja</span>
+      </div>
     </nav>
 
     <div class="sidebar-footer">
+      <!-- Admin Profile Box -->
+      <div class="admin-profile-box">
+        <div class="admin-avatar">AD</div>
+        <div class="admin-details">
+          <div class="admin-name"><?= htmlspecialchars($currentUser['name'] ?? 'Administrator') ?></div>
+          <div class="admin-role">@<?= htmlspecialchars($currentUser['username'] ?? 'admin') ?></div>
+        </div>
+        <div class="flex gap-1" style="margin-left: auto;">
+          <button type="button" class="btn btn-secondary btn-xs" onclick="openChangePasswordModal()" title="Ubah Password Admin">
+            KUNCI
+          </button>
+          <a href="logout.php" class="btn btn-danger btn-xs" title="Keluar dari sistem">
+            KELUAR
+          </a>
+        </div>
+      </div>
+
       <div class="esp-status">
         <div class="esp-dot" id="esp-dot"></div>
         <div class="esp-info">
@@ -65,9 +92,29 @@
         <div class="page-subtitle" id="page-subtitle">Rekap absensi kehadiran hari ini</div>
       </div>
       <div class="top-bar-actions">
+        <!-- Active Event Badge -->
+        <div class="active-event-badge" id="active-event-badge" onclick="showPanel('events')" style="cursor: pointer; display: inline-flex; align-items: center; gap: 8px; background: var(--color-yellow); border: 2px solid #000; padding: 6px 12px; font-size: 11px; font-weight: 800; box-shadow: 2px 2px 0px #000;" title="Klik untuk kelola Program Kerja / Acara">
+          <span style="background: #000; color: #fff; padding: 2px 6px; font-size: 10px; letter-spacing: 0.05em;">ACARA</span>
+          <span id="active-event-title">Memuat acara...</span>
+          <span id="active-event-date" class="font-mono text-xs" style="color: #333;"></span>
+        </div>
+
+        <!-- Active Session Selector -->
+        <div class="session-selector-box" style="display: inline-flex; align-items: center; gap: 6px; background: #ffffff; border: 2px solid #000; padding: 4px 8px; box-shadow: 2px 2px 0px #000;">
+          <span style="font-size: 10px; font-weight: 800; background: #000; color: #fff; padding: 2px 6px; letter-spacing: 0.05em;">SESI</span>
+          <select id="select-active-session" onchange="onSessionChange(this.value)" style="border: none; outline: none; background: transparent; font-family: var(--font-mono); font-size: 11px; font-weight: 700; cursor: pointer; padding: 2px 4px;">
+            <option value="sesi_1">Sesi 1 (Datang / Pagi)</option>
+            <option value="sesi_2">Sesi 2 (Setelah Ishoma / Siang)</option>
+            <option value="sesi_3">Sesi 3 (Pulang / Penutupan)</option>
+          </select>
+        </div>
+
+        <button class="btn btn-secondary btn-xs audio-toggle-btn" id="audio-toggle-btn" onclick="toggleAudioChime()" title="Aktifkan atau nonaktifkan notifikasi suara tap">
+          <span id="audio-status-label">Suara: Aktif</span>
+        </button>
         <div class="datetime-display">
-          <div class="date" id="live-date">—</div>
-          <div class="time" id="live-time">—</div>
+          <div class="date" id="live-date">-</div>
+          <div class="time" id="live-time">-</div>
         </div>
       </div>
     </header>
@@ -90,25 +137,26 @@
 
       <!-- Stat Cards -->
       <div class="stats-grid">
-        <div class="stat-card">
+        <div class="stat-card stat-card-success">
           <div class="stat-info">
             <div class="stat-label">Hadir Hari Ini</div>
             <div class="stat-value" id="stat-hadir">0</div>
           </div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card stat-card-primary">
           <div class="stat-info">
             <div class="stat-label">Total Mahasiswa</div>
             <div class="stat-value" id="stat-total">0</div>
           </div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card stat-card-danger" onclick="openAlphaModal()" style="cursor: pointer;" title="Klik untuk melihat daftar anggota yang belum hadir (Alpha)">
           <div class="stat-info">
             <div class="stat-label">Belum Hadir</div>
             <div class="stat-value" id="stat-alpha">0</div>
+            <div class="font-mono text-xs mt-1" style="font-weight: 800; text-decoration: underline; color: var(--color-red);">LIHAT DAFTAR ALPHA &rarr;</div>
           </div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card stat-card-warning">
           <div class="stat-info">
             <div class="stat-label">Tingkat Kehadiran</div>
             <div class="stat-value" id="stat-persen">0%</div>
@@ -133,7 +181,8 @@
           <div class="card-title">Absensi Hari Ini</div>
           <div class="flex gap-2">
             <button class="btn btn-secondary btn-sm" onclick="loadDashboard()">Refresh</button>
-            <button class="btn btn-primary btn-sm" onclick="exportAttendanceToday()">Download Excel (Hari Ini)</button>
+            <button class="btn btn-primary btn-sm" onclick="exportAttendanceToday('csv')">Download CSV (Hari Ini)</button>
+            <button class="btn btn-secondary btn-sm" onclick="exportAttendanceToday('excel')">Download Excel</button>
           </div>
         </div>
         <div class="table-wrapper">
@@ -144,12 +193,13 @@
                 <th>UID Kartu</th>
                 <th>Nama Mahasiswa</th>
                 <th>NIM</th>
+                <th>Sesi</th>
                 <th>Jam Tap</th>
               </tr>
             </thead>
             <tbody id="dashboard-tbody">
               <tr>
-                <td colspan="5">
+                <td colspan="6">
                   <div class="empty-state">
                     <div class="empty-text">Memuat data...</div>
                   </div>
@@ -167,7 +217,7 @@
          ========================================= -->
     <section class="panel" id="panel-tambah">
 
-      <div class="alert-box alert-info" style="margin-bottom: 24px;">
+      <div class="alert-box alert-warning" style="margin-bottom: 24px;">
         <div class="alert-content">
           <div class="alert-title">Panduan Registrasi Kartu Mahasiswa</div>
           <div class="alert-desc">
@@ -181,7 +231,7 @@
 
       <!-- Tombol Aksi Tambah -->
       <div class="flex gap-2 mb-3">
-        <button class="btn btn-primary" onclick="openAddManualModal()">Tambah Manual</button>
+        <button class="btn btn-warning" onclick="openAddManualModal()">+ Tambah Manual</button>
         <button class="btn btn-secondary" onclick="loadUnknownCards()">Refresh Kartu</button>
       </div>
 
@@ -231,8 +281,10 @@
               <input type="search" id="search-students" placeholder="Cari nama, NIM, atau UID..."
                      oninput="loadStudents(this.value)">
             </div>
-            <button class="btn btn-primary btn-sm" onclick="openAddManualModal()">Tambah</button>
-            <button class="btn btn-secondary btn-sm" onclick="exportStudents()">Export Data</button>
+            <button class="btn btn-warning btn-sm" onclick="openAddManualModal()">+ Tambah</button>
+            <button class="btn btn-primary btn-sm" onclick="openImportModal()">+ Import CSV/Excel</button>
+            <button class="btn btn-secondary btn-sm" onclick="exportStudents('csv')">Download CSV</button>
+            <button class="btn btn-secondary btn-sm" onclick="exportStudents('excel')">Download Excel</button>
           </div>
         </div>
         <div class="table-wrapper">
@@ -267,39 +319,57 @@
          ========================================= -->
     <section class="panel" id="panel-rekap">
 
-      <!-- Filter & Stats -->
-      <div class="card" style="padding: 20px; margin-bottom: 24px;">
-        <div class="flex items-center gap-3" style="flex-wrap: wrap;">
-          <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 180px;">
-            <label class="form-label">Pilih Tanggal Presensi</label>
-            <input type="date" id="rekap-date" onchange="loadRekap()">
+      <!-- 1. Filter Tanggal & Export Actions Bar -->
+      <div class="card" style="padding: 16px 20px; margin-bottom: 20px;">
+        <div class="flex items-center justify-between gap-3" style="flex-wrap: wrap;">
+          <!-- Date & Session Selector -->
+          <div class="flex items-center gap-2" style="flex-wrap: wrap;">
+            <label class="form-label" style="margin-bottom: 0; white-space: nowrap; font-size: 12px;">Tanggal:</label>
+            <input type="date" id="rekap-date" onchange="loadRekap()" style="width: auto; min-width: 140px; padding: 6px 10px; font-size: 12px;">
+            <button class="btn btn-secondary btn-sm" onclick="setQuickDate('today')" type="button">Hari Ini</button>
+            <button class="btn btn-secondary btn-sm" onclick="setQuickDate('yesterday')" type="button">Kemarin</button>
+
+            <label class="form-label" style="margin-bottom: 0; white-space: nowrap; font-size: 12px; margin-left: 6px;">Filter Sesi:</label>
+            <select id="rekap-session-filter" onchange="loadRekap()" style="width: auto; min-width: 130px; padding: 6px 8px; font-size: 12px; font-family: var(--font-mono); border: 2px solid #000;">
+              <option value="">Semua Sesi</option>
+              <option value="sesi_1">Sesi 1 (Datang)</option>
+              <option value="sesi_2">Sesi 2 (Ishoma)</option>
+              <option value="sesi_3">Sesi 3 (Pulang)</option>
+            </select>
           </div>
-          <div class="stat-card" style="flex: 1; min-width: 140px; margin-bottom: 0; padding: 12px 16px; box-shadow: var(--shadow-sm);">
-            <div>
-              <div class="text-xs text-muted font-bold" style="text-transform: uppercase;">Total Hadir</div>
-              <div class="font-mono font-bold" style="font-size: 24px; color: var(--text-main);" id="rekap-total-hadir">0</div>
-            </div>
-          </div>
-          <div class="stat-card" style="flex: 1; min-width: 140px; margin-bottom: 0; padding: 12px 16px; box-shadow: var(--shadow-sm);">
-            <div>
-              <div class="text-xs text-muted font-bold" style="text-transform: uppercase;">Total Mahasiswa</div>
-              <div class="font-mono font-bold" style="font-size: 24px; color: var(--text-main);" id="rekap-total-mhs">0</div>
-            </div>
-          </div>
-          <div class="stat-card" style="flex: 1; min-width: 140px; margin-bottom: 0; padding: 12px 16px; box-shadow: var(--shadow-sm);">
-            <div>
-              <div class="text-xs text-muted font-bold" style="text-transform: uppercase;">Persentase</div>
-              <div class="font-mono font-bold" style="font-size: 24px; color: var(--text-main);" id="rekap-persen">0%</div>
-            </div>
-          </div>
-          <div class="flex gap-2" style="align-self: flex-end; padding-bottom: 2px;">
-            <button class="btn btn-primary btn-sm" onclick="exportAttendance()">Download Excel (Tanggal Ini)</button>
-            <button class="btn btn-secondary btn-sm" onclick="exportAllAttendance()">Download Semua (Excel)</button>
+
+          <!-- Download Action Buttons -->
+          <div class="flex gap-2" style="flex-wrap: wrap;">
+            <button class="btn btn-primary btn-sm" onclick="exportAttendance('csv')">Download CSV</button>
+            <button class="btn btn-secondary btn-sm" onclick="exportAttendance('excel')">Download Excel</button>
+            <button class="btn btn-secondary btn-sm" onclick="exportAllAttendance('csv')">Download Semua (CSV)</button>
           </div>
         </div>
       </div>
 
-      <!-- Tabel Rekap Kehadiran -->
+      <!-- 2. Stat Cards Summary (3 Kolom Sejajar & Simetris) -->
+      <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 20px;">
+        <div class="stat-card stat-card-success">
+          <div class="stat-info">
+            <div class="stat-label">Total Hadir</div>
+            <div class="stat-value" id="rekap-total-hadir">0</div>
+          </div>
+        </div>
+        <div class="stat-card stat-card-primary">
+          <div class="stat-info">
+            <div class="stat-label">Total Mahasiswa</div>
+            <div class="stat-value" id="rekap-total-mhs">0</div>
+          </div>
+        </div>
+        <div class="stat-card stat-card-warning">
+          <div class="stat-info">
+            <div class="stat-label">Persentase Kehadiran</div>
+            <div class="stat-value" id="rekap-persen">0%</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Tabel Rekap Kehadiran -->
       <div class="card">
         <div class="card-header">
           <div class="card-title">Log Data Kehadiran</div>
@@ -316,13 +386,14 @@
                 <th>UID Kartu</th>
                 <th>Nama Mahasiswa</th>
                 <th>NIM</th>
+                <th>Sesi Presensi</th>
                 <th>Waktu Tap</th>
-                <th>Aksi</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody id="rekap-tbody">
               <tr>
-                <td colspan="6">
+                <td colspan="7">
                   <div class="empty-state">
                     <div class="empty-text">Pilih tanggal untuk melihat rekap</div>
                   </div>
@@ -334,6 +405,48 @@
       </div>
     </section>
     <!-- END PANEL REKAP -->
+
+    <!-- =========================================
+         PANEL: PROGRAM KERJA / ACARA HIMA
+         ========================================= -->
+    <section class="panel" id="panel-events">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Manajemen Program Kerja &amp; Acara</div>
+            <div class="text-xs text-muted font-mono mt-1">Pilih acara yang sedang berlangsung agar rekap absensi terhubung dengan kegiatan</div>
+          </div>
+          <div class="flex gap-2 items-center" style="flex-wrap: wrap;">
+            <button class="btn btn-warning btn-sm" onclick="openCreateEventModal()">+ Buat Acara Baru</button>
+            <button class="btn btn-secondary btn-sm" onclick="loadEvents()">Refresh Acara</button>
+          </div>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>No</th>
+                <th>Nama Program Kerja / Acara</th>
+                <th>Tanggal Pelaksanaan</th>
+                <th>Total Hadir</th>
+                <th>Status</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="events-tbody">
+              <tr>
+                <td colspan="6">
+                  <div class="empty-state">
+                    <div class="empty-text">Memuat data program kerja...</div>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+    <!-- END PANEL PROGRAM KERJA -->
 
   </main>
 </div>
@@ -399,18 +512,165 @@
   </div>
 </div>
 
+<!-- =========================================
+     MODAL: Buat Program Kerja / Acara
+     ========================================= -->
+<div class="modal-overlay" id="modal-create-event">
+  <div class="modal-box">
+    <div class="modal-title">Buat Program Kerja / Acara Baru</div>
+
+    <div class="form-group">
+      <label class="form-label">Nama Acara / Program Kerja *</label>
+      <input type="text" id="event-name" placeholder="Contoh: Rapat Pleno 1, Makrab HIMA, Workshop IT">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Tanggal Pelaksanaan</label>
+      <input type="date" id="event-date">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Keterangan / Deskripsi Singkat</label>
+      <input type="text" id="event-desc" placeholder="Contoh: Wajib untuk seluruh pengurus divisi">
+    </div>
+
+    <div class="form-group" style="margin-top: 12px;">
+      <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; cursor: pointer;">
+        <input type="checkbox" id="event-active" checked style="width: 18px; height: 18px; accent-color: #000;">
+        Langsung jadikan acara aktif saat ini
+      </label>
+      <div class="text-xs text-muted font-mono mt-1">Perangkat RFID dan web akan langsung mencatat presensi untuk acara ini.</div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeCreateEventModal()">Batal</button>
+      <button class="btn btn-primary" onclick="submitCreateEvent()">Simpan Acara</button>
+    </div>
+  </div>
+</div>
+
+<!-- =========================================
+     MODAL: Daftar Anggota Belum Hadir (Alpha)
+     ========================================= -->
+<div class="modal-overlay" id="modal-alpha">
+  <div class="modal-box" style="max-width: 650px; width: 95%;">
+    <div class="flex items-center justify-between" style="border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 16px;">
+      <div>
+        <div class="modal-title" style="margin-bottom: 4px; color: var(--color-red);">Daftar Anggota Belum Hadir (Alpha)</div>
+        <div class="text-xs font-mono text-muted" id="alpha-date-title">Tanggal: Hari Ini</div>
+      </div>
+      <span class="badge badge-danger font-mono" id="alpha-count-badge">0 ANGGOTA</span>
+    </div>
+
+    <div class="table-wrapper" style="max-height: 340px; overflow-y: auto; border: 2px solid #000; margin-bottom: 16px;">
+      <table>
+        <thead>
+          <tr>
+            <th>No</th>
+            <th>Nama Anggota</th>
+            <th>NIM</th>
+            <th>UID Kartu</th>
+          </tr>
+        </thead>
+        <tbody id="alpha-tbody">
+          <tr><td colspan="4"><div class="empty-state"><div class="empty-text">Memuat...</div></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="modal-actions" style="display: flex; justify-content: space-between; align-items: center;">
+      <button class="btn btn-success btn-sm" onclick="copyAlphaListToWhatsApp()">
+        Salin Format WhatsApp
+      </button>
+      <button class="btn btn-secondary btn-sm" onclick="closeAlphaModal()">
+        Tutup
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- =========================================
+     MODAL: Import Batch Mahasiswa (CSV/Excel)
+     ========================================= -->
+<div class="modal-overlay" id="modal-import">
+  <div class="modal-box" style="max-width: 600px; width: 95%;">
+    <div class="modal-title">Import Massal Data Mahasiswa</div>
+    <div class="text-xs text-muted font-mono mb-3">Upload file CSV atau Excel (.xlsx) dengan kolom: <strong>UID</strong>, <strong>Nama</strong>, dan <strong>NIM</strong>.</div>
+
+    <div class="form-group">
+      <input type="file" id="import-file-input" accept=".csv, .xlsx, .xls" onchange="handleImportFile(event)"
+             style="border: 2px dashed #000; padding: 20px; width: 100%; background: var(--bg-alt); cursor: pointer; text-align: center;">
+    </div>
+
+    <div class="flex items-center justify-between mb-2">
+      <div class="font-mono text-xs font-bold">Preview Data Terdeteksi:</div>
+      <span class="badge badge-primary font-mono" id="import-count-badge">0 DATA</span>
+    </div>
+
+    <div class="table-wrapper" style="max-height: 220px; overflow-y: auto; border: 2px solid #000; margin-bottom: 16px;">
+      <table>
+        <thead>
+          <tr>
+            <th>No</th>
+            <th>UID</th>
+            <th>Nama</th>
+            <th>NIM</th>
+          </tr>
+        </thead>
+        <tbody id="import-preview-tbody">
+          <tr>
+            <td colspan="4">
+              <div class="empty-state">
+                <div class="empty-text">PILIH FILE TERLEBIH DAHULU</div>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeImportModal()">Batal</button>
+      <button class="btn btn-primary" id="btn-submit-import" onclick="submitBatchImport()" disabled>Mulai Import &rarr;</button>
+    </div>
+  </div>
+</div>
+
+<!-- =========================================
+     MODAL: Ganti Password Admin
+     ========================================= -->
+<div class="modal-overlay" id="modal-password">
+  <div class="modal-box" style="max-width: 440px;">
+    <div class="modal-title">Ubah Password Administrator</div>
+    <div class="text-xs text-muted font-mono mb-3">Pastikan password baru kuat dan mudah Anda ingat.</div>
+
+    <div class="form-group">
+      <label class="form-label">Password Lama *</label>
+      <input type="password" id="pwd-old" placeholder="Masukkan password lama">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Password Baru * (Min. 6 karakter)</label>
+      <input type="password" id="pwd-new" placeholder="Masukkan password baru">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Konfirmasi Password Baru *</label>
+      <input type="password" id="pwd-confirm" placeholder="Ulangi password baru">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeChangePasswordModal()">Batal</button>
+      <button class="btn btn-warning" onclick="submitChangePassword()">Simpan Password</button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast Notifications Container -->
 <div class="toast-container" id="toast-container"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="assets/app.js"></script>
 <script type="module" src="assets/firebase-service.js"></script>
-<script>
-  // Export data kehadiran hari ini langsung dari dashboard
-  function exportAttendanceToday() {
-    const today = new Date().toISOString().slice(0, 10);
-    window.open(`api/export.php?type=attendance&date=${today}`, '_blank');
-  }
-</script>
-
 </body>
 </html>
