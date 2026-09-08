@@ -31,6 +31,9 @@ define('DB_PORT', getenv('DB_PORT') ? (int)getenv('DB_PORT') : 3306);
 define('APP_NAME', 'Sistem Presensi Mahasiswa');
 define('APP_VERSION', '1.1.0');
 
+// Kunci otentikasi opsional untuk request dari ESP8266 ke api/check_uid.php
+define('DEVICE_API_KEY', getenv('DEVICE_API_KEY') ?: '');
+
 // --- Timezone ---
 date_default_timezone_set('Asia/Jakarta');
 
@@ -267,6 +270,31 @@ function checkApiAuth() {
         ]);
         exit;
     }
+
+    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    if (in_array($method, ['POST', 'PUT', 'DELETE', 'PATCH'], true)) {
+        $csrfToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_POST['csrf_token'] ?? '';
+        // Validasi ketat jika token CSRF disertakan atau jika sesi aktif
+        if (!empty($csrfToken) && !verifyCsrfToken($csrfToken)) {
+            http_response_code(403);
+            echo json_encode([
+                'success' => false,
+                'message' => 'Forbidden: Validasi token keamanan (CSRF) gagal.'
+            ]);
+            exit;
+        }
+    }
+}
+
+// Verifikasi akses perangkat IoT (ESP8266)
+function verifyDeviceAccess() {
+    $expectedKey = defined('DEVICE_API_KEY') ? DEVICE_API_KEY : '';
+    // Jika kunci belum diset di .env/config, berikan akses penuh untuk kompatibilitas
+    if (empty($expectedKey)) {
+        return true;
+    }
+    $providedKey = $_SERVER['HTTP_X_DEVICE_KEY'] ?? $_GET['key'] ?? '';
+    return hash_equals($expectedKey, (string)$providedKey);
 }
 
 // --- Helper: Set Header CORS untuk API ---

@@ -10,6 +10,12 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     exit;
 }
 
+// Verifikasi kunci perangkat IoT jika DEVICE_API_KEY dikonfigurasi
+if (!verifyDeviceAccess()) {
+    sendJSON(['success' => false, 'message' => 'Unauthorized: Akses perangkat ditolak'], 401);
+    exit;
+}
+
 $uid = isset($_GET['uid']) ? strtoupper(trim($_GET['uid'])) : '';
 
 if (empty($uid)) {

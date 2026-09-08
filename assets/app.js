@@ -1,5 +1,22 @@
 // app.js: Frontend controller untuk sistem presensi RFID HIMA (Dual-sync Firebase dan MySQL)
 
+// Global Fetch Interceptor untuk Otomatisasi X-CSRF-Token pada Mutasi
+const _originalFetch = window.fetch;
+window.fetch = function(input, init = {}) {
+  const options = { ...init };
+  const method = (options.method || 'GET').toUpperCase();
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    if (csrfToken) {
+      options.headers = {
+        ...(options.headers || {}),
+        'X-CSRF-Token': csrfToken
+      };
+    }
+  }
+  return _originalFetch.call(this, input, options);
+};
+
 // Helper format tanggal lokal YYYY-MM-DD
 function getLocalDateString(d = new Date()) {
   const year = d.getFullYear();
@@ -49,7 +66,7 @@ async function onSessionChange(sessionId) {
   // Sinkronisasi ke Firebase Cloud agar pembaca RFID (ESP8266) langsung sinkron
   if (typeof window.setActiveSessionInFirebase === 'function') {
     try {
-      await window.setActiveSessionInFirebase(sessionId, sessionName);
+      await window.setActiveSessionInFirebase({ id: sessionId, name: sessionName });
     } catch (e) {
       console.warn('Firebase session sync notice:', e);
     }
@@ -631,8 +648,19 @@ async function clearRekapByDate() {
     showToast('Pilih tanggal terlebih dahulu', 'warning');
     return;
   }
-  if (!confirm(`Yakin ingin menghapus semua rekap presensi pada tanggal ${date}?\nTindakan ini tidak dapat dibatalkan.`)) return;
 
+  const confirmDate = prompt(`PERINGATAN: Tindakan ini akan menghapus permanen semua log presensi pada tanggal ${date} (Lokal & Cloud).\n\nKetik "${date}" di bawah untuk konfirmasi:`);
+  if (confirmDate !== date) {
+    if (confirmDate !== null) {
+      showToast('Penghapusan dibatalkan (tanggal konfirmasi tidak cocok)', 'warning');
+    }
+    return;
+  }
+
+  let mysqlSuccess = false;
+  let cloudDeleted = 0;
+
+  // 1. Hapus dari database MySQL lokal via API
   try {
     const res = await fetch(API.attendance, {
       method: 'DELETE',
@@ -641,15 +669,27 @@ async function clearRekapByDate() {
     });
     const data = await res.json();
     if (data.success) {
-      showToast(data.message || 'Rekap kehadiran berhasil dihapus', 'success');
-      loadRekap();
-      loadDashboard();
-    } else {
-      showToast(data.message || 'Gagal menghapus rekap kehadiran', 'danger');
+      mysqlSuccess = true;
     }
   } catch (e) {
-    console.error(e);
-    showToast('Terjadi kesalahan saat menghapus rekap kehadiran', 'danger');
+    console.warn('MySQL clear attendance notice:', e);
+  }
+
+  // 2. Hapus dari database Firebase Cloud (jika terhubung)
+  if (typeof window.clearRekapFromFirebase === 'function' && window.isFirebaseConnected) {
+    try {
+      cloudDeleted = await window.clearRekapFromFirebase(date);
+    } catch (e) {
+      console.warn('Firebase clear attendance notice:', e);
+    }
+  }
+
+  if (mysqlSuccess || cloudDeleted > 0) {
+    showToast(`Rekap kehadiran tanggal ${date} berhasil dibersihkan`, 'success');
+    loadRekap();
+    loadDashboard();
+  } else {
+    showToast('Tidak ada data yang dihapus atau gagal memproses permintaan', 'info');
   }
 }
 
@@ -1027,15 +1067,28 @@ async function checkEspStatus() {
   }
 }
 
-// Audio notification (Web Audio API)
+// Audio notification (Web Audio API - Singleton AudioContext)
 let audioChimeEnabled = localStorage.getItem('presensi_audio_chime') !== 'disabled';
+let _sharedAudioCtx = null;
+
+function getSharedAudioContext() {
+  if (!_sharedAudioCtx) {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) {
+      _sharedAudioCtx = new AudioCtx();
+    }
+  }
+  if (_sharedAudioCtx && _sharedAudioCtx.state === 'suspended') {
+    _sharedAudioCtx.resume().catch(() => {});
+  }
+  return _sharedAudioCtx;
+}
 
 function playTapChime() {
   if (!audioChimeEnabled) return;
   try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
-    const ctx = new AudioContext();
+    const ctx = getSharedAudioContext();
+    if (!ctx) return;
     
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();

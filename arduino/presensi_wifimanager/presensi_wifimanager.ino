@@ -117,6 +117,7 @@ void playTone(int freq, int durationMs) {
     }
     interrupts();                            
     done += batch;
+    yield(); // Mencegah reset Software Watchdog Timer ESP8266
   }
   digitalWrite(BUZZER_PIN, LOW);
 }
@@ -129,13 +130,22 @@ void buzzAlready()   { playTone(2700, 70); delay(60); playTone(2700, 70); delay(
 void buzzError()     { playTone(400, 120); delay(60); playTone(400, 120); delay(60); playTone(250, 500); }
 
 // ============================================================
-// LCD HELPER
+// LCD HELPER (Proteksi Batas 16 Karakter Aman)
 // ============================================================
 void lcdPrint(const char* baris1, const char* baris2 = "") {
   lcd.clear();
-  lcd.setCursor(0, 0); lcd.print(baris1);
-  if (strlen(baris2) > 0) {
-    lcd.setCursor(0, 1); lcd.print(baris2);
+  lcd.setCursor(0, 0);
+  char buf1[17];
+  strncpy(buf1, baris1 ? baris1 : "", 16);
+  buf1[16] = '\0';
+  lcd.print(buf1);
+
+  if (baris2 && strlen(baris2) > 0) {
+    lcd.setCursor(0, 1);
+    char buf2[17];
+    strncpy(buf2, baris2, 16);
+    buf2[16] = '\0';
+    lcd.print(buf2);
   }
 }
 
@@ -226,10 +236,40 @@ void handleUnknownCard(String uid) {
   lcdPrint("Kartu Baru!", "Menyimpan UID...");
   buzzUnknown();
 
-  // Otomatis kirim UID tidak dikenal ke Firebase
-  Firebase.RTDB.setString(&fbdo, "/unknown_cards/" + uid, "Belum Terdaftar");
+  String path = "/unknown_cards/" + uid;
+  int currentTap = 0;
+  if (Firebase.RTDB.getInt(&fbdo, path + "/tap_count")) {
+    currentTap = fbdo.intData();
+  }
 
-  delay(1500);
+  time_t now = time(nullptr);
+  struct tm* ptm = localtime(&now);
+  bool ntpReady = (ptm && ptm->tm_year > 100);
+
+  FirebaseJson json;
+  json.set("tap_count", currentTap + 1);
+
+  if (ntpReady) {
+    char timeStr[32];
+    snprintf(timeStr, sizeof(timeStr), "%04d-%02d-%02dT%02d:%02d:%02d",
+             ptm->tm_year + 1900, ptm->tm_mon + 1, ptm->tm_mday,
+             ptm->tm_hour, ptm->tm_min, ptm->tm_sec);
+    if (currentTap == 0) {
+      json.set("first_seen", timeStr);
+    }
+    json.set("last_seen", timeStr);
+    json.set("timestamp", (double)now * 1000);
+  } else {
+    json.set("last_seen/.sv", "timestamp");
+    if (currentTap == 0) {
+      json.set("first_seen/.sv", "timestamp");
+    }
+  }
+
+  // Gunakan updateNode agar data first_seen tidak tertimpa saat tap berulang
+  Firebase.RTDB.updateNode(&fbdo, path, &json);
+
+  delay(1200);
   lcdPrint("Tap Kartu...", "");
 }
 

@@ -11,6 +11,16 @@ import { db, ref, onValue, set, remove } from "./firebase-config.js";
 // Status koneksi Firebase
 let isFirebaseConnected = false;
 let isInitialLoad = true;
+let debounceDashboardTimer = null;
+
+function triggerDebouncedDashboard() {
+  if (debounceDashboardTimer) clearTimeout(debounceDashboardTimer);
+  debounceDashboardTimer = setTimeout(() => {
+    if (typeof window.loadDashboard === 'function') {
+      window.loadDashboard();
+    }
+  }, 250);
+}
 
 // Cache data cloud
 export let cloudUnknownCards = [];
@@ -115,9 +125,7 @@ export function initFirebaseListeners() {
     if (typeof window.renderCloudStudents === 'function') {
       window.renderCloudStudents();
     }
-    if (typeof window.loadDashboard === 'function') {
-      window.loadDashboard();
-    }
+    triggerDebouncedDashboard();
   });
 
   // 3. Realtime Listener: /unknown_cards (Pushed by ESP8266 when unknown RFID is tapped)
@@ -222,10 +230,8 @@ export function initFirebaseListeners() {
           window.showToast(`Presensi: ${latestLog.name}${sessLabel} (${latestLog.waktu})`, 'success');
         }
 
-        // Refresh data dashboard & rekap
-        if (typeof window.loadDashboard === 'function') {
-          window.loadDashboard();
-        }
+        // Refresh data dashboard & rekap dengan debounce
+        triggerDebouncedDashboard();
         if (typeof window.loadRekap === 'function') {
           window.loadRekap();
         }
@@ -233,7 +239,7 @@ export function initFirebaseListeners() {
     } else {
       cloudLogs = [];
       window.cloudLogs = [];
-      if (typeof window.loadDashboard === 'function') window.loadDashboard();
+      triggerDebouncedDashboard();
       if (typeof window.loadRekap === 'function') window.loadRekap();
     }
   });
@@ -300,11 +306,24 @@ export async function setActiveEventInFirebase(eventData) {
 }
 
 // Helper untuk sinkronisasi sesi presensi aktif ke Firebase
-export async function setActiveSessionInFirebase(sessionData) {
+export async function setActiveSessionInFirebase(sessionData, optionalName) {
   try {
+    let payload;
+    if (typeof sessionData === 'object' && sessionData !== null) {
+      payload = {
+        id: sessionData.id || 'sesi_1',
+        name: sessionData.name || 'Sesi 1 (Datang)'
+      };
+    } else {
+      payload = {
+        id: String(sessionData || 'sesi_1'),
+        name: String(optionalName || sessionData || 'Sesi 1 (Datang)')
+      };
+    }
+
     const sessionRef = ref(db, "active_session");
-    await set(sessionRef, sessionData);
-    console.log("[Firebase] Sesi presensi aktif berhasil disinkronkan ke cloud:", sessionData);
+    await set(sessionRef, payload);
+    console.log("[Firebase] Sesi presensi aktif berhasil disinkronkan ke cloud:", payload);
     return true;
   } catch (error) {
     console.error("[Firebase] Gagal update sesi aktif di cloud:", error);
@@ -325,42 +344,43 @@ export async function deleteUserFromFirebase(uid) {
   }
 }
 
-// Helper untuk menghapus rekap kehadiran berdasarkan tanggal (dengan konfirmasi ketat)
-export async function clearRekapByDate(targetDate) {
-  const date = targetDate || document.getElementById('rekap-date')?.value || getLocalDateString();
-  if (!date) return;
-
-  const confirmDate = prompt(`PERINGATAN: Tindakan ini akan menghapus permanen semua log presensi pada tanggal ${date}.\n\nKetik "${date}" di bawah untuk konfirmasi:`);
-  if (confirmDate !== date) {
-    if (confirmDate !== null && typeof window.showToast === 'function') {
-      window.showToast('Penghapusan dibatalkan (tanggal konfirmasi tidak cocok)', 'warning');
-    }
-    return;
-  }
-
+// Helper untuk menghapus log kehadiran dari Firebase berdasarkan tanggal
+export async function clearRekapFromFirebase(date) {
+  if (!window.isFirebaseConnected) return 0;
   try {
-    if (window.isFirebaseConnected) {
-      const logs = window.cloudLogs || [];
-      const logsToDelete = logs.filter(l => l.date === date);
+    const logs = window.cloudLogs || [];
+    const logsToDelete = logs.filter(l => l.date === date);
 
-      if (logsToDelete.length === 0) {
-        if (typeof window.showToast === 'function') window.showToast(`Tidak ada data log pada tanggal ${date}`, 'info');
-        return;
-      }
-
+    if (logsToDelete.length > 0) {
       for (const item of logsToDelete) {
         if (item.id) {
           await remove(ref(db, `log_presensi/${item.id}`));
         }
       }
+    }
 
-      if (typeof window.showToast === 'function') {
-        window.showToast(`Berhasil menghapus ${logsToDelete.length} data presensi (${date})`, 'success');
-      }
+    // Bersihkan juga node attendance_today agar kartu bisa tap ulang jika dibutuhkan
+    await clearAttendanceTodayNode(date);
+
+    console.log(`[Firebase] Berhasil membersihkan ${logsToDelete.length} data presensi (${date})`);
+    return logsToDelete.length;
+  } catch (err) {
+    console.error("[Firebase] Gagal menghapus rekap cloud:", err);
+    throw err;
+  }
+}
+
+// Helper untuk membersihkan node /attendance_today pada tanggal tertentu
+export async function clearAttendanceTodayNode(date) {
+  if (!window.isFirebaseConnected || !date) return;
+  try {
+    const sessions = ['sesi_1', 'sesi_2', 'sesi_3'];
+    for (const s of sessions) {
+      const nodeRef = ref(db, `attendance_today/${date}_${s}`);
+      await remove(nodeRef);
     }
   } catch (err) {
-    console.error("Gagal menghapus rekap tanggal:", err);
-    if (typeof window.showToast === 'function') window.showToast('Gagal menghapus rekap cloud', 'danger');
+    console.warn("[Firebase] Gagal membersihkan node attendance_today:", err);
   }
 }
 
@@ -369,7 +389,8 @@ window.registerUserToFirebase = registerUserToFirebase;
 window.deleteUserFromFirebase = deleteUserFromFirebase;
 window.setActiveEventInFirebase = setActiveEventInFirebase;
 window.setActiveSessionInFirebase = setActiveSessionInFirebase;
-window.clearRekapByDate = clearRekapByDate;
+window.clearRekapFromFirebase = clearRekapFromFirebase;
+window.clearAttendanceTodayNode = clearAttendanceTodayNode;
 
 // Jalankan otomatis saat script dimuat
 if (document.readyState === 'loading') {

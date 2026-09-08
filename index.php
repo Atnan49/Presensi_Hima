@@ -12,6 +12,7 @@ $currentUser = getCurrentUser();
   <meta name="description" content="Dashboard Presensi Mahasiswa Berbasis RFID dan IoT ESP8266 HIMATIF UMS">
   <link rel="icon" type="image/png" href="assets/Image/logo-himatif-light.png">
   <link rel="apple-touch-icon" href="assets/Image/logo-himatif-light.png">
+  <meta name="csrf-token" content="<?= htmlspecialchars(generateCsrfToken()) ?>">
   <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
@@ -250,11 +251,11 @@ $currentUser = getCurrentUser();
           <table>
             <thead>
               <tr>
+                <th style="width: 50px;">No</th>
                 <th>UID Kartu</th>
                 <th>Jumlah Tap</th>
-                <th>Pertama Kali Terdeteksi</th>
                 <th>Terakhir Terdeteksi</th>
-                <th>Aksi</th>
+                <th style="width: 130px;">Aksi</th>
               </tr>
             </thead>
             <tbody id="unknown-tbody">
