@@ -6,14 +6,14 @@
 //  PIN RFID   : SS=D8, RST=D0
 //  PIN LED    : Hijau=D1, Kuning=D2, Merah=D3
 //  PIN BUZZER : D4
-//  PIN LCD    : SDA=D6 (GPIO12), SCL=D5 (GPIO14) — I2C
+//  PIN LCD    : SDA=D6 (GPIO12), SCL=D5 (GPIO14) (I2C)
 //
 //  Untuk mengaktifkan LCD: hapus komentar "//" di bawah ini:
 //  #define USE_LCD
 // ============================================================
 
 // ──────────────────────────────────────────────
-//  [OPSIONAL] Aktifkan LCD I2C — hapus "//" untuk pakai LCD
+//  [OPSIONAL] Aktifkan LCD I2C, hapus "//" untuk pakai LCD
 // ──────────────────────────────────────────────
 // #define USE_LCD
 
@@ -77,7 +77,7 @@ String lastUID   = "";
 unsigned long lastRead = 0;
 
 // ============================================================
-// HELPER LCD — wrapper aman, tidak error bila LCD tidak ada
+// HELPER LCD: wrapper aman, tidak error bila LCD tidak ada
 // ============================================================
 void lcdClear() {
 #ifdef USE_LCD

@@ -1,6 +1,4 @@
-# ============================================================
-# halaman_presensi.py — Rekap Presensi + Export Excel
-# ============================================================
+# Modul rekapitulasi presensi dan export data Excel
 
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -76,7 +74,7 @@ class HalamanPresensi(tk.Frame):
             f = tk.Frame(stat_row, bg=BG_CARD, padx=16, pady=8)
             f.pack(side="left", padx=6, fill="y")
             tk.Label(f, text=label, font=FONT_SM, bg=BG_CARD, fg=TEXT_DIM).pack()
-            lbl = tk.Label(f, text="—", font=FONT_LG, bg=BG_CARD, fg=color)
+            lbl = tk.Label(f, text="-", font=FONT_LG, bg=BG_CARD, fg=color)
             lbl.pack()
             self.stat_labels[key] = lbl
 
@@ -285,10 +283,10 @@ class HalamanPresensi(tk.Frame):
         threading.Thread(target=fetch, daemon=True).start()
 
     def _update_stat(self, data):
-        self.stat_labels["total_mhs"].config(text=str(data.get("total_mhs", "—")))
-        self.stat_labels["total_hadir"].config(text=str(data.get("total_hadir", "—")))
-        self.stat_labels["terlambat"].config(text=str(data.get("terlambat", "—")))
-        self.stat_labels["tidak_hadir"].config(text=str(data.get("tidak_hadir", "—")))
+        self.stat_labels["total_mhs"].config(text=str(data.get("total_mhs", "-")))
+        self.stat_labels["total_hadir"].config(text=str(data.get("total_hadir", "-")))
+        self.stat_labels["terlambat"].config(text=str(data.get("terlambat", "-")))
+        self.stat_labels["tidak_hadir"].config(text=str(data.get("tidak_hadir", "-")))
 
     # ─────────────────────────────────────────────────────────
     # EXPORT EXCEL

@@ -1,6 +1,4 @@
-# ============================================================
-# excel_export.py — Export Presensi ke File .xlsx
-# ============================================================
+# Modul export data presensi ke format Excel (.xlsx)
 
 import os
 import re

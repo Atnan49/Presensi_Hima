@@ -1,8 +1,5 @@
 <?php
-// ============================================================
-// get_presensi.php — Data Presensi per Acara
-// Digunakan Python app untuk tampil & export Excel
-// ============================================================
+// Endpoint data presensi per acara
 
 header("Content-Type: application/json");
 include "koneksi.php";

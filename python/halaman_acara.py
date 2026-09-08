@@ -1,6 +1,4 @@
-# ============================================================
-# halaman_acara.py — Kelola Acara/Kegiatan
-# ============================================================
+# Modul manajemen acara dan kegiatan organisasi
 
 import tkinter as tk
 from tkinter import ttk, messagebox

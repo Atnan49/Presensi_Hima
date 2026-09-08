@@ -1,6 +1,4 @@
-# ============================================================
-# halaman_mahasiswa.py — Kelola Data Mahasiswa & Kartu RFID
-# ============================================================
+# Modul manajemen data mahasiswa dan kartu RFID
 
 import tkinter as tk
 from tkinter import ttk, messagebox

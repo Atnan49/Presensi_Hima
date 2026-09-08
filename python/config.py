@@ -1,6 +1,4 @@
-# ============================================================
-# config.py — Konfigurasi Sistem Presensi Mahasiswa RFID
-# ============================================================
+# Konfigurasi aplikasi GUI desktop presensi mahasiswa
 
 TITLE  = "Sistem Presensi Mahasiswa RFID"
 SERVER = "http://localhost/PRESENSI/php"   # Ganti IP sesuai MAMP Anda

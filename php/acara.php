@@ -1,31 +1,37 @@
 <?php
-// ============================================================
-// get_acara.php — CRUD Acara/Kegiatan
-// Actions: list, tambah, edit, hapus, aktifkan, selesaikan
-// ============================================================
+// CRUD data acara dan kegiatan organisasi
 
 header("Content-Type: application/json");
 include "koneksi.php";
 
 $action = $_REQUEST['action'] ?? 'list';
 
+// Proteksi akses untuk tindakan administratif
+if ($action !== 'get_aktif') {
+    checkApiAuth();
+}
+
 // ── LIST ─────────────────────────────────────────────────────
 if ($action === 'list') {
     $filter = trim($_GET['filter'] ?? '');  // 'aktif', 'draft', 'selesai', '' = semua
     if ($filter !== '') {
-        $f   = $conn->real_escape_string($filter);
-        $sql = "SELECT a.*,
-                    (SELECT COUNT(*) FROM presensi p WHERE p.acara_id = a.id) AS jumlah_hadir
-                FROM acara a
-                WHERE a.status = '$f'
-                ORDER BY a.tanggal DESC";
+        $stmt = $conn->prepare("
+            SELECT a.*,
+                   (SELECT COUNT(*) FROM presensi p WHERE p.acara_id = a.id) AS jumlah_hadir
+            FROM acara a
+            WHERE a.status = ?
+            ORDER BY a.tanggal DESC
+        ");
+        $stmt->bind_param("s", $filter);
+        $stmt->execute();
+        $result = $stmt->get_result();
     } else {
         $sql = "SELECT a.*,
                     (SELECT COUNT(*) FROM presensi p WHERE p.acara_id = a.id) AS jumlah_hadir
                 FROM acara a
                 ORDER BY a.tanggal DESC";
+        $result = $conn->query($sql);
     }
-    $result = $conn->query($sql);
     $data   = [];
     while ($row = $result->fetch_assoc()) {
         $data[] = $row;

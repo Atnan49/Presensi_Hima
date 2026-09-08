@@ -1,10 +1,5 @@
 <?php
-// ============================================
-// api/unknown_cards.php
-// Ambil daftar kartu yang belum terdaftar
-// GET    → daftar unknown cards
-// DELETE → hapus (setelah didaftarkan)
-// ============================================
+// API kartu RFID belum terdaftar
 
 require_once '../config.php';
 setCorsHeaders();
@@ -23,6 +18,7 @@ if ($method === 'GET') {
 }
 
 if ($method === 'DELETE') {
+    checkApiAuth();
     $body = json_decode(file_get_contents('php://input'), true);
     $uid  = strtoupper(trim($body['uid'] ?? ''));
     if (empty($uid)) {

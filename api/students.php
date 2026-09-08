@@ -1,12 +1,5 @@
 <?php
-// ============================================
-// api/students.php
-// CRUD Mahasiswa
-// GET    → daftar semua mahasiswa + UID
-// POST   → tambah mahasiswa baru (daftarkan UID)
-// PUT    → update data mahasiswa
-// DELETE → hapus mahasiswa
-// ============================================
+// API master data mahasiswa dan batch import
 
 require_once '../config.php';
 setCorsHeaders();
@@ -31,12 +24,49 @@ if ($method === 'GET') {
     sendJSON(['success' => true, 'data' => $students]);
 }
 
-// --- POST: Tambah mahasiswa baru ---
+// --- POST: Tambah mahasiswa baru (Tunggal atau Batch) ---
 if ($method === 'POST') {
-    $body = json_decode(file_get_contents('php://input'), true);
+    checkApiAuth();
+    $body = json_decode(file_get_contents('php://input'), true) ?: [];
+
+    // Opsi 1: Batch Import massal dalam transaksi tunggal
+    if (!empty($body['batch']) && is_array($body['students'] ?? null)) {
+        $studentsList = $body['students'];
+        $inserted = 0;
+        $db->beginTransaction();
+        try {
+            $stmtUpsert = $db->prepare("
+                INSERT INTO students (uid, name, nim, is_active)
+                VALUES (?, ?, ?, 1)
+                ON DUPLICATE KEY UPDATE name = VALUES(name), nim = VALUES(nim), is_active = 1
+            ");
+            $stmtDelUnknown = $db->prepare("DELETE FROM unknown_cards WHERE uid = ?");
+
+            foreach ($studentsList as $item) {
+                $u = strtoupper(trim($item['uid'] ?? ''));
+                $n = strip_tags(trim($item['name'] ?? ''));
+                $m = strip_tags(trim($item['nim'] ?? ''));
+                if (!empty($u) && !empty($n)) {
+                    $stmtUpsert->execute([$u, $n, $m]);
+                    $stmtDelUnknown->execute([$u]);
+                    $inserted++;
+                }
+            }
+            $db->commit();
+            sendJSON([
+                'success' => true,
+                'message' => "Berhasil memproses import {$inserted} data mahasiswa",
+                'count'   => $inserted
+            ]);
+        } catch (Exception $e) {
+            $db->rollBack();
+            sendJSON(['success' => false, 'message' => 'Gagal memproses batch import data'], 500);
+        }
+    }
+
     $uid  = strtoupper(trim($body['uid'] ?? ''));
-    $name = trim($body['name'] ?? '');
-    $nim  = trim($body['nim'] ?? '');
+    $name = strip_tags(trim($body['name'] ?? ''));
+    $nim  = strip_tags(trim($body['nim'] ?? ''));
 
     if (empty($uid) || empty($name)) {
         sendJSON(['success' => false, 'message' => 'UID dan nama wajib diisi'], 400);
@@ -64,34 +94,58 @@ if ($method === 'POST') {
 
 // --- PUT: Update data mahasiswa ---
 if ($method === 'PUT') {
+    checkApiAuth();
     $body = json_decode(file_get_contents('php://input'), true);
     $id   = (int)($body['id'] ?? 0);
-    $name = trim($body['name'] ?? '');
-    $nim  = trim($body['nim'] ?? '');
+    $name = strip_tags(trim($body['name'] ?? ''));
+    $nim  = strip_tags(trim($body['nim'] ?? ''));
     $uid  = strtoupper(trim($body['uid'] ?? ''));
     $active = isset($body['is_active']) ? (int)$body['is_active'] : 1;
 
-    if (!$id || empty($name)) {
-        sendJSON(['success' => false, 'message' => 'ID dan nama wajib diisi'], 400);
+    if (empty($name)) {
+        sendJSON(['success' => false, 'message' => 'Nama mahasiswa wajib diisi'], 400);
     }
 
-    $db->prepare("UPDATE students SET name=?, nim=?, uid=?, is_active=? WHERE id=?")
-       ->execute([$name, $nim, $uid, $active, $id]);
+    if ($id > 0) {
+        $db->prepare("UPDATE students SET name=?, nim=?, uid=?, is_active=? WHERE id=?")
+           ->execute([$name, $nim, $uid, $active, $id]);
+    } elseif (!empty($uid)) {
+        // Fallback update berdasarkan UID jika ID tidak ada (misal dari Cloud Firebase)
+        $check = $db->prepare("SELECT id FROM students WHERE uid = ?");
+        $check->execute([$uid]);
+        $existing = $check->fetch();
+
+        if ($existing) {
+            $db->prepare("UPDATE students SET name=?, nim=?, is_active=? WHERE uid=?")
+               ->execute([$name, $nim, $active, $uid]);
+        } else {
+            // Jika belum ada di MySQL, insert otomatis
+            $db->prepare("INSERT INTO students (uid, name, nim, is_active) VALUES (?, ?, ?, ?)")
+               ->execute([$uid, $name, $nim, $active]);
+        }
+    } else {
+        sendJSON(['success' => false, 'message' => 'ID atau UID mahasiswa wajib diisi'], 400);
+    }
 
     sendJSON(['success' => true, 'message' => 'Data berhasil diperbarui']);
 }
 
 // --- DELETE: Hapus mahasiswa ---
 if ($method === 'DELETE') {
+    checkApiAuth();
     $body = json_decode(file_get_contents('php://input'), true);
     $id   = (int)($body['id'] ?? 0);
+    $uid  = strtoupper(trim($body['uid'] ?? ''));
 
-    if (!$id) {
-        sendJSON(['success' => false, 'message' => 'ID tidak valid'], 400);
+    if ($id > 0) {
+        $db->prepare("DELETE FROM students WHERE id = ?")->execute([$id]);
+        sendJSON(['success' => true, 'message' => 'Mahasiswa berhasil dihapus']);
+    } elseif (!empty($uid)) {
+        $db->prepare("DELETE FROM students WHERE uid = ?")->execute([$uid]);
+        sendJSON(['success' => true, 'message' => 'Mahasiswa berhasil dihapus']);
+    } else {
+        sendJSON(['success' => false, 'message' => 'ID atau UID tidak valid'], 400);
     }
-
-    $db->prepare("DELETE FROM students WHERE id = ?")->execute([$id]);
-    sendJSON(['success' => true, 'message' => 'Mahasiswa berhasil dihapus']);
 }
 
 sendJSON(['success' => false, 'message' => 'Method tidak diizinkan'], 405);

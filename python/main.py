@@ -1,6 +1,4 @@
-# ============================================================
-# main.py — Entry Point Aplikasi Sistem Presensi Mahasiswa RFID
-# ============================================================
+# Entry point aplikasi GUI presensi mahasiswa RFID
 
 import tkinter as tk
 from tkinter import ttk

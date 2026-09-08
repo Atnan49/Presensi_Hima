@@ -1,8 +1,5 @@
 <?php
-// ============================================================
-// tap.php — Handler Utama Tap Kartu RFID
-// Menerima POST dari Arduino, catat presensi ke DB
-// ============================================================
+// Handler tap kartu RFID dari perangkat IoT
 
 header("Content-Type: application/json");
 include "koneksi.php";
