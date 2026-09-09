@@ -3,6 +3,18 @@
 
 require_once '../config.php';
 
+// Pastikan hanya admin yang terautentikasi yang dapat mengakses ekspor data
+if (!isLoggedIn()) {
+    http_response_code(401);
+    header('Content-Type: text/html; charset=UTF-8');
+    echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>401 Unauthorized</title><style>body{font-family:sans-serif;padding:40px;text-align:center;background:#0f172a;color:#f8fafc;}a{color:#38bdf8;}</style></head><body>';
+    echo '<h2>401 - Akses Ditolak</h2>';
+    echo '<p>Sesi login diperlukan untuk mengunduh laporan presensi mahasiswa.</p>';
+    echo '<p><a href="../login.php">Klik di sini untuk Login Admin</a></p>';
+    echo '</body></html>';
+    exit;
+}
+
 $type   = $_GET['type']   ?? 'attendance';
 $format = $_GET['format'] ?? 'xls';
 
@@ -144,9 +156,19 @@ if ($type === 'students') {
 }
 
 // --- EXPORT REKAP ABSENSI ---
-$date      = $_GET['date'] ?? date('Y-m-d');
+$dateRaw   = trim($_GET['date'] ?? date('Y-m-d'));
+$date      = preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateRaw) ? $dateRaw : date('Y-m-d');
 $dateAll   = isset($_GET['all']) && $_GET['all'] === '1';
-$sessionId = trim($_GET['session_id'] ?? '');
+
+// Validasi session_id hanya nilai yang diizinkan
+$rawSessionId = trim($_GET['session_id'] ?? '');
+$allowedSessions = ['sesi_1', 'sesi_2', 'sesi_3'];
+$sessionId = in_array($rawSessionId, $allowedSessions, true) ? $rawSessionId : '';
+
+$sessionLabel = '';
+if ($sessionId === 'sesi_1') $sessionLabel = 'Sesi 1 (Datang)';
+elseif ($sessionId === 'sesi_2') $sessionLabel = 'Sesi 2 (Ishoma)';
+elseif ($sessionId === 'sesi_3') $sessionLabel = 'Sesi 3 (Pulang)';
 
 if ($dateAll) {
     $sql = "
@@ -167,7 +189,7 @@ if ($dateAll) {
     $stmt->execute($params);
     $filenameBase = 'Rekap_Absensi_Semua_' . date('Ymd_His');
     $title        = 'REKAPITULASI KESELURUHAN PRESENSI';
-    $subtitle     = 'Semua Riwayat Kehadiran Mahasiswa' . (!empty($sessionId) ? " (Filter: {$sessionId})" : '');
+    $subtitle     = 'Semua Riwayat Kehadiran Mahasiswa' . (!empty($sessionLabel) ? " (Filter: {$sessionLabel})" : '');
 } else {
     $sql = "
         SELECT s.uid, s.name, s.nim,
@@ -188,7 +210,7 @@ if ($dateAll) {
     $stmt->execute($params);
     $filenameBase = 'Absensi_' . $date . (!empty($sessionId) ? "_{$sessionId}" : '');
     $title        = 'REKAPITULASI PRESENSI MAHASISWA';
-    $subtitle     = 'Tanggal: ' . date('d/m/Y', strtotime($date)) . (!empty($sessionId) ? " | Sesi: {$sessionId}" : '');
+    $subtitle     = 'Tanggal: ' . date('d/m/Y', strtotime($date)) . (!empty($sessionLabel) ? " | Sesi: {$sessionLabel}" : '');
 }
 
 $rows = $stmt->fetchAll();
@@ -256,8 +278,8 @@ echo "\xEF\xBB\xBF"; // UTF-8 BOM
 <body>
   <div class="kop-box">
     <div class="inst-label">HIMPUNAN MAHASISWA (HIMA) - SISTEM PRESENSI RFID</div>
-    <div class="main-title"><?= $title ?></div>
-    <div class="sub-title"><?= $subtitle ?></div>
+    <div class="main-title"><?= htmlspecialchars($title, ENT_QUOTES, 'UTF-8') ?></div>
+    <div class="sub-title"><?= htmlspecialchars($subtitle, ENT_QUOTES, 'UTF-8') ?></div>
     <div style="font-size: 9pt; color: #64748b; margin-top: 6px;">Total Hadir: <strong><?= count($rows) ?> Mahasiswa</strong> | Tanggal Export: <?= date('d/m/Y H:i:s') ?></div>
   </div>
 

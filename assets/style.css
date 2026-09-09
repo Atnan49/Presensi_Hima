@@ -28,11 +28,11 @@
   --color-yellow-hover:    #ffd600;
   --color-yellow-light:    #fffde0;
   
-  --color-red:             #ff3b30;
-  --color-red-hover:       #dc2626;
+  --color-red:             #dc2626;
+  --color-red-hover:       #b91c1c;
   --color-red-light:       #fee2e2;
 
-  --color-danger:          #ff3b30;
+  --color-danger:          #dc2626;
   --color-warning:         #ffe600;
   --color-success:         #16a34a;
   --color-info:            #2563eb;
@@ -70,7 +70,7 @@ body {
   min-height: 100vh;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  /* Grid wireframe background halus */
+  /* Wireframe design identity: minimal blueprint grid (desain.md / R-07 purpose-gate) */
   background-image: 
     linear-gradient(to right, rgba(0, 0, 0, 0.05) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
@@ -889,6 +889,27 @@ td:last-child {
   box-shadow: 0px 0px 0px #000000;
 }
 
+/* Success Button */
+.btn-success {
+  background: var(--color-success);
+  color: #000000;
+  border-color: #000000;
+  box-shadow: var(--shadow-sm);
+  font-weight: 800;
+}
+
+.btn-success:hover {
+  background: #16a34a;
+  color: #ffffff;
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0px #000000;
+}
+
+.btn-success:active {
+  transform: translate(2px, 2px);
+  box-shadow: 0px 0px 0px #000000;
+}
+
 /* Ukuran Tombol */
 .btn-sm {
   padding: 6px 14px;
@@ -948,6 +969,25 @@ td:last-child {
   background: var(--bg-alt);
   color: var(--text-main);
   border: 1px solid #000000;
+}
+
+.badge-primary {
+  background: #000000;
+  color: #ffffff;
+  border: 1px solid #000000;
+}
+
+.badge-secondary {
+  background: var(--bg-alt);
+  color: var(--text-main);
+  border: 1px solid #000000;
+}
+
+.badge-outline {
+  background: transparent;
+  color: var(--text-main);
+  border: 1px dashed #000000;
+  box-shadow: none;
 }
 
 /* ============================================================
@@ -1061,6 +1101,7 @@ select:focus {
   display: none;
   align-items: center;
   justify-content: center;
+  padding: 16px;
   z-index: 999;
 }
 
@@ -1074,7 +1115,7 @@ select:focus {
   border: 3px solid #000000;
   box-shadow: var(--shadow-modal);
   width: 100%;
-  max-width: 480px;
+  max-width: min(480px, calc(100vw - 32px));
   padding: 24px;
   animation: modalPop 0.15s ease-out;
 }
@@ -1243,6 +1284,21 @@ select:focus {
     align-items: flex-start;
     gap: 12px;
   }
+  .top-bar-actions {
+    flex-wrap: wrap;
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .sidebar-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px 12px;
+  }
+  .nav-item {
+    flex: 1 1 auto;
+    min-width: 130px;
+  }
   /* Accessible touch targets for mobile (minimum 44px, WCAG / R-03) */
   .btn, .nav-item {
     min-height: 44px;
@@ -1263,6 +1319,20 @@ select:focus {
 .active-event-badge {
   transition: transform 0.1s ease, box-shadow 0.1s ease;
   user-select: none;
+  max-width: 100%;
+}
+#active-event-title {
+  display: inline-block;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+@media (max-width: 768px) {
+  #active-event-title {
+    max-width: 160px;
+  }
 }
 .active-event-badge:hover {
   transform: translate(-1px, -1px);

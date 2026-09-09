@@ -10,9 +10,13 @@ $currentUser = getCurrentUser();
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sistem Presensi HIMATIF - RFID / ESP8266</title>
   <meta name="description" content="Dashboard Presensi Mahasiswa Berbasis RFID dan IoT ESP8266 HIMATIF UMS">
-  <link rel="icon" type="image/png" href="assets/Image/logo-himatif-light.png">
-  <link rel="apple-touch-icon" href="assets/Image/logo-himatif-light.png">
-  <link rel="stylesheet" href="assets/style.css">
+  <link rel="icon" type="image/x-icon" href="assets/Image/favicon.ico?v=2">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/Image/favicon-32x32.png?v=2">
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/Image/favicon-16x16.png?v=2">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/Image/apple-touch-icon.png?v=2">
+  <link rel="manifest" href="site.webmanifest">
+  <meta name="csrf-token" content="<?= htmlspecialchars(generateCsrfToken()) ?>">
+  <link rel="stylesheet" href="assets/style.css?v=<?= @filemtime(__DIR__ . '/assets/style.css') ?: time() ?>">
 </head>
 <body>
 
@@ -250,11 +254,11 @@ $currentUser = getCurrentUser();
           <table>
             <thead>
               <tr>
+                <th style="width: 50px;">No</th>
                 <th>UID Kartu</th>
                 <th>Jumlah Tap</th>
-                <th>Pertama Kali Terdeteksi</th>
                 <th>Terakhir Terdeteksi</th>
-                <th>Aksi</th>
+                <th style="width: 130px;">Aksi</th>
               </tr>
             </thead>
             <tbody id="unknown-tbody">
@@ -629,25 +633,27 @@ $currentUser = getCurrentUser();
     <div class="modal-title">Ubah Password Administrator</div>
     <div class="text-xs text-muted font-mono mb-3">Pastikan password baru kuat dan mudah Anda ingat.</div>
 
-    <div class="form-group">
-      <label class="form-label">Password Lama *</label>
-      <input type="password" id="pwd-old" placeholder="Masukkan password lama">
-    </div>
+    <form id="form-change-password" onsubmit="event.preventDefault(); submitChangePassword();">
+      <div class="form-group">
+        <label class="form-label" for="pwd-old">Password Lama *</label>
+        <input type="password" id="pwd-old" placeholder="Masukkan password lama" autocomplete="current-password" required>
+      </div>
 
-    <div class="form-group">
-      <label class="form-label">Password Baru * (Min. 6 karakter)</label>
-      <input type="password" id="pwd-new" placeholder="Masukkan password baru">
-    </div>
+      <div class="form-group">
+        <label class="form-label" for="pwd-new">Password Baru * (Min. 6 karakter)</label>
+        <input type="password" id="pwd-new" placeholder="Masukkan password baru" autocomplete="new-password" required>
+      </div>
 
-    <div class="form-group">
-      <label class="form-label">Konfirmasi Password Baru *</label>
-      <input type="password" id="pwd-confirm" placeholder="Ulangi password baru">
-    </div>
+      <div class="form-group">
+        <label class="form-label" for="pwd-confirm">Konfirmasi Password Baru *</label>
+        <input type="password" id="pwd-confirm" placeholder="Ulangi password baru" autocomplete="new-password" required>
+      </div>
 
-    <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeChangePasswordModal()">Batal</button>
-      <button class="btn btn-warning" onclick="submitChangePassword()">Simpan Password</button>
-    </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeChangePasswordModal()">Batal</button>
+        <button type="submit" class="btn btn-warning">Simpan Password</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -655,7 +661,7 @@ $currentUser = getCurrentUser();
 <div class="toast-container" id="toast-container"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="assets/app.js"></script>
-<script type="module" src="assets/firebase-service.js"></script>
+<script src="assets/app.js?v=<?= @filemtime(__DIR__ . '/assets/app.js') ?: time() ?>"></script>
+<script type="module" src="assets/firebase-service.js?v=<?= @filemtime(__DIR__ . '/assets/firebase-service.js') ?: time() ?>"></script>
 </body>
 </html>

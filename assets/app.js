@@ -1,5 +1,52 @@
 // app.js: Frontend controller untuk sistem presensi RFID HIMA (Dual-sync Firebase dan MySQL)
 
+// Global Fetch Interceptor untuk Otomatisasi X-CSRF-Token pada Mutasi Lokal (Same-Origin)
+const _originalFetch = window.fetch;
+window.fetch = function(input, init = {}) {
+  const options = { ...init };
+  let method = options.method;
+  if (!method && typeof input === 'object' && input !== null && 'method' in input) {
+    method = input.method;
+  }
+  method = (method || 'GET').toUpperCase();
+
+  // Hanya sematkan X-CSRF-Token pada request ke internal/origin sendiri
+  let isSameOrigin = true;
+  try {
+    let urlStr = '';
+    if (typeof input === 'string') {
+      urlStr = input;
+    } else if (input && typeof input.url === 'string') {
+      urlStr = input.url;
+    } else if (input && typeof input.href === 'string') {
+      urlStr = input.href;
+    }
+    if (/^(https?:)?\/\//i.test(urlStr)) {
+      const parsedUrl = new URL(urlStr, window.location.origin);
+      isSameOrigin = parsedUrl.origin === window.location.origin;
+    }
+  } catch {
+    isSameOrigin = false;
+  }
+
+  if (isSameOrigin && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    if (csrfToken) {
+      if (options.headers instanceof Headers) {
+        options.headers.set('X-CSRF-Token', csrfToken);
+      } else if (Array.isArray(options.headers)) {
+        options.headers.push(['X-CSRF-Token', csrfToken]);
+      } else {
+        options.headers = {
+          ...(options.headers || {}),
+          'X-CSRF-Token': csrfToken
+        };
+      }
+    }
+  }
+  return _originalFetch.call(this, input, options);
+};
+
 // Helper format tanggal lokal YYYY-MM-DD
 function getLocalDateString(d = new Date()) {
   const year = d.getFullYear();
@@ -49,7 +96,7 @@ async function onSessionChange(sessionId) {
   // Sinkronisasi ke Firebase Cloud agar pembaca RFID (ESP8266) langsung sinkron
   if (typeof window.setActiveSessionInFirebase === 'function') {
     try {
-      await window.setActiveSessionInFirebase(sessionId, sessionName);
+      await window.setActiveSessionInFirebase({ id: sessionId, name: sessionName });
     } catch (e) {
       console.warn('Firebase session sync notice:', e);
     }
@@ -84,6 +131,9 @@ const API = {
 
 // Navigation and panel switching
 function showPanel(name) {
+  if (!name || typeof name !== 'string') {
+    name = 'dashboard';
+  }
   state.currentPanel = name;
 
   // Toggle active class di nav items
@@ -95,8 +145,30 @@ function showPanel(name) {
   document.querySelectorAll('.panel, .panel-section').forEach(el => {
     el.classList.remove('active');
   });
-  const target = document.getElementById(`panel-${name}`);
-  if (target) target.classList.add('active');
+
+  // Tampilkan panel yang dipilih (fallback aman ke panel-dashboard jika target tidak ditemukan)
+  let targetPanel = document.getElementById(`panel-${name}`) || document.getElementById(name);
+  if (!targetPanel) {
+    targetPanel = document.getElementById('panel-dashboard');
+    name = 'dashboard';
+    state.currentPanel = 'dashboard';
+  }
+  if (targetPanel) {
+    targetPanel.classList.add('active');
+  }
+  // Update header page title & subtitle
+  const panelTitles = {
+    dashboard: ['Dashboard', 'Rekap absensi kehadiran hari ini'],
+    tambah:    ['Pendaftaran Kartu', 'Registrasi kartu RFID mahasiswa baru'],
+    mahasiswa: ['Data Mahasiswa', 'Daftar mahasiswa terdaftar di sistem'],
+    rekap:     ['Rekap Absensi', 'Laporan riwayat kehadiran mahasiswa'],
+    events:    ['Program Kerja', 'Manajemen acara dan kegiatan organisasi'],
+  };
+  const [tTitle, tSub] = panelTitles[name] || ['Presensi HIMA', 'Sistem Presensi RFID'];
+  const titleEl = document.getElementById('page-title');
+  const subEl = document.getElementById('page-subtitle');
+  if (titleEl) titleEl.textContent = tTitle;
+  if (subEl) subEl.textContent = tSub;
 
   // Load data sesuai panel yang aktif
   if (name === 'dashboard') loadDashboard();
@@ -184,7 +256,7 @@ function updateDashboardUI() {
   // Live feed (tap terakhir hari ini)
   if (state.attendance.length > 0) {
     const last = state.attendance[0]; // paling baru
-    updateLiveFeed(last.name, last.waktu);
+    updateLiveFeed(last.name, last.waktu, false);
   }
 
   // Unknown cards badge
@@ -228,8 +300,12 @@ function renderDashboardTable(records) {
 }
 
 let lastRecordedTapTime = '';
+let isInitialAppLoad = true;
+setTimeout(() => {
+  isInitialAppLoad = false;
+}, 2000);
 
-function updateLiveFeed(name, time) {
+function updateLiveFeed(name, time, playSound = true) {
   const el = document.getElementById('latest-tap');
   if (!el) return;
   
@@ -245,7 +321,9 @@ function updateLiveFeed(name, time) {
 
   if (time && time !== lastRecordedTapTime) {
     lastRecordedTapTime = time;
-    playTapChime();
+    if (playSound && !isInitialAppLoad) {
+      playTapChime();
+    }
   }
 }
 
@@ -631,8 +709,19 @@ async function clearRekapByDate() {
     showToast('Pilih tanggal terlebih dahulu', 'warning');
     return;
   }
-  if (!confirm(`Yakin ingin menghapus semua rekap presensi pada tanggal ${date}?\nTindakan ini tidak dapat dibatalkan.`)) return;
 
+  const confirmDate = prompt(`PERINGATAN: Tindakan ini akan menghapus permanen semua log presensi pada tanggal ${date} (Lokal & Cloud).\n\nKetik "${date}" di bawah untuk konfirmasi:`);
+  if (confirmDate !== date) {
+    if (confirmDate !== null) {
+      showToast('Penghapusan dibatalkan (tanggal konfirmasi tidak cocok)', 'warning');
+    }
+    return;
+  }
+
+  let mysqlSuccess = false;
+  let cloudDeleted = 0;
+
+  // 1. Hapus dari database MySQL lokal via API
   try {
     const res = await fetch(API.attendance, {
       method: 'DELETE',
@@ -641,15 +730,27 @@ async function clearRekapByDate() {
     });
     const data = await res.json();
     if (data.success) {
-      showToast(data.message || 'Rekap kehadiran berhasil dihapus', 'success');
-      loadRekap();
-      loadDashboard();
-    } else {
-      showToast(data.message || 'Gagal menghapus rekap kehadiran', 'danger');
+      mysqlSuccess = true;
     }
   } catch (e) {
-    console.error(e);
-    showToast('Terjadi kesalahan saat menghapus rekap kehadiran', 'danger');
+    console.warn('MySQL clear attendance notice:', e);
+  }
+
+  // 2. Hapus dari database Firebase Cloud (jika terhubung)
+  if (typeof window.clearRekapFromFirebase === 'function' && window.isFirebaseConnected) {
+    try {
+      cloudDeleted = await window.clearRekapFromFirebase(date);
+    } catch (e) {
+      console.warn('Firebase clear attendance notice:', e);
+    }
+  }
+
+  if (mysqlSuccess || cloudDeleted > 0) {
+    showToast(`Rekap kehadiran tanggal ${date} berhasil dibersihkan`, 'success');
+    loadRekap();
+    loadDashboard();
+  } else {
+    showToast('Tidak ada data yang dihapus atau gagal memproses permintaan', 'info');
   }
 }
 
@@ -825,7 +926,7 @@ function downloadExcel(filename, title, period, headers, rows) {
 function exportAttendanceToday(format = 'csv') {
   const today = state.selectedDate || getLocalDateString();
   const allLogs = window.cloudLogs || state.attendance || [];
-  const logsToday = allLogs.filter(l => l.date === today);
+  const logsToday = allLogs.filter(l => (l.date || l.tap_date) === today);
 
   if (logsToday.length === 0) {
     showToast(`Belum ada data presensi hari ini (${today})`, 'warning');
@@ -839,7 +940,7 @@ function exportAttendanceToday(format = 'csv') {
     r.nim || '-',
     'HADIR',
     formatSessionLabel(r.session_id, r.session_name),
-    r.date || today,
+    r.date || r.tap_date || today,
     r.waktu
   ]);
 
@@ -856,7 +957,7 @@ function exportAttendance(format = 'csv') {
   const date = document.getElementById('rekap-date')?.value || state.selectedDate || getLocalDateString();
   const sessionFilter = document.getElementById('rekap-session-filter')?.value || '';
   const allLogs = window.cloudLogs || state.attendance || [];
-  let logsFiltered = allLogs.filter(l => l.date === date);
+  let logsFiltered = allLogs.filter(l => (l.date || l.tap_date) === date);
   if (sessionFilter) {
     logsFiltered = logsFiltered.filter(l => (l.session_id || 'sesi_1') === sessionFilter);
   }
@@ -873,7 +974,7 @@ function exportAttendance(format = 'csv') {
     r.nim || '-',
     'HADIR',
     formatSessionLabel(r.session_id, r.session_name),
-    r.date || date,
+    r.date || r.tap_date || date,
     r.waktu
   ]);
 
@@ -902,7 +1003,7 @@ function exportAllAttendance(format = 'csv') {
     r.nim || '-',
     'HADIR',
     formatSessionLabel(r.session_id, r.session_name),
-    r.date || '-',
+    r.date || r.tap_date || '-',
     r.waktu
   ]);
 
@@ -1024,15 +1125,54 @@ async function checkEspStatus() {
   }
 }
 
-// Audio notification (Web Audio API)
+// Audio notification (Web Audio API - Singleton AudioContext)
 let audioChimeEnabled = localStorage.getItem('presensi_audio_chime') !== 'disabled';
+let _sharedAudioCtx = null;
+let hasUserInteracted = false;
+
+function unlockAudioContext() {
+  hasUserInteracted = true;
+  if (!_sharedAudioCtx) {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) {
+      try {
+        _sharedAudioCtx = new AudioCtx();
+      } catch {}
+    }
+  }
+  if (_sharedAudioCtx && _sharedAudioCtx.state === 'suspended') {
+    _sharedAudioCtx.resume().catch(() => {});
+  }
+}
+
+// Buka kunci AudioContext secara otomatis begitu user berinteraksi dengan halaman
+['click', 'touchstart', 'keydown'].forEach(evt => {
+  document.addEventListener(evt, unlockAudioContext, { once: true, passive: true });
+});
+
+function getSharedAudioContext() {
+  if (!hasUserInteracted && !_sharedAudioCtx) {
+    return null;
+  }
+  if (!_sharedAudioCtx) {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) {
+      try {
+        _sharedAudioCtx = new AudioCtx();
+      } catch {}
+    }
+  }
+  if (_sharedAudioCtx && _sharedAudioCtx.state === 'suspended' && hasUserInteracted) {
+    _sharedAudioCtx.resume().catch(() => {});
+  }
+  return _sharedAudioCtx;
+}
 
 function playTapChime() {
-  if (!audioChimeEnabled) return;
+  if (!audioChimeEnabled || !hasUserInteracted) return;
   try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
-    const ctx = new AudioContext();
+    const ctx = getSharedAudioContext();
+    if (!ctx || ctx.state !== 'running') return;
     
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
@@ -1056,10 +1196,17 @@ function playTapChime() {
 }
 
 function toggleAudioChime() {
+  unlockAudioContext();
   audioChimeEnabled = !audioChimeEnabled;
   localStorage.setItem('presensi_audio_chime', audioChimeEnabled ? 'enabled' : 'disabled');
   updateAudioToggleUI();
-  if (audioChimeEnabled) playTapChime();
+  if (audioChimeEnabled) {
+    if (_sharedAudioCtx && _sharedAudioCtx.state === 'suspended') {
+      _sharedAudioCtx.resume().then(() => playTapChime()).catch(() => {});
+    } else {
+      playTapChime();
+    }
+  }
 }
 
 function updateAudioToggleUI() {
@@ -1351,8 +1498,8 @@ async function openAlphaModal() {
     }
   });
 
-  // Cari yang belum hadir pada sesi aktif ini
-  currentAbsentStudents = allStudents.filter(s => !presentUids.has(s.uid));
+  // Cari yang belum hadir pada sesi aktif ini (hanya mahasiswa yang berstatus aktif)
+  currentAbsentStudents = allStudents.filter(s => (s.is_active === undefined || s.is_active == 1) && !presentUids.has(s.uid));
 
   if (countBadge) countBadge.textContent = `${currentAbsentStudents.length} ANGGOTA`;
 
@@ -1409,11 +1556,29 @@ function copyAlphaListToWhatsApp() {
   text += `----------------------------------------\n`;
   text += `Diharapkan segera melakukan presensi kehadiran di meja registrasi. Terima kasih.`;
 
-  navigator.clipboard.writeText(text).then(() => {
-    showToast('Daftar belum hadir disalin ke clipboard.', 'success');
-  }).catch(() => {
-    showToast('Gagal menyalin ke clipboard', 'danger');
-  });
+  const fallbackCopy = (val) => {
+    const ta = document.createElement('textarea');
+    ta.value = val;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      showToast('Daftar belum hadir disalin ke clipboard.', 'success');
+    } catch {
+      showToast('Gagal menyalin ke clipboard', 'danger');
+    }
+    document.body.removeChild(ta);
+  };
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('Daftar belum hadir disalin ke clipboard.', 'success');
+    }).catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
 }
 
 // Batch student registration import
@@ -1722,4 +1887,13 @@ document.addEventListener('DOMContentLoaded', () => {
   window.toggleAudioChime = toggleAudioChime;
   window.setQuickDate = setQuickDate;
   window.playTapChime = playTapChime;
+
+  // Antislop R-32: Keyboard accessibility (Escape key closes open modals)
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.modal-overlay.active, .modal-overlay.open').forEach(m => {
+        m.classList.remove('active', 'open');
+      });
+    }
+  });
 });

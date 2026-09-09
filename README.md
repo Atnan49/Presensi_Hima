@@ -33,11 +33,9 @@ Sistem Presensi Mahasiswa terintegrasi berbasis kartu RFID / NFC dengan antarmuk
 ## Struktur Direktori
 
 ```text
+├── .htaccess               # Konfigurasi Apache/LiteSpeed untuk produksi (Hostinger)
+├── .env.example            # Template konfigurasi environment / database
 ├── api/                    # REST API backend PHP (attendance, students, check_uid, dll.)
-├── arduino/                # Source code firmware ESP8266 (Arduino IDE)
-│   ├── presensi_firebase/  # Firmware Cloud Firebase Realtime Database (Rekomendasi)
-│   ├── presensi_esp8266/   # Firmware Localhost PN532 (Mode SPI)
-│   └── presensi_rfid/      # Firmware Localhost RC522 (Mode SPI)
 ├── assets/                 # Frontend assets
 │   ├── style.css           # Neo-Brutalism wireframe design system
 │   ├── app.js              # Frontend dashboard logic
@@ -46,9 +44,11 @@ Sistem Presensi Mahasiswa terintegrasi berbasis kartu RFID / NFC dengan antarmuk
 ├── exports/                # Direktori output file export Excel
 ├── php/                    # Modul backend PHP
 ├── python/                 # Source code aplikasi desktop GUI Python
-├── sql/                    # Skema database MySQL (presensi.sql)
+├── sql/                    # Skema database MySQL (presensi.sql & hostinger_import.sql)
 ├── config.php              # Konfigurasi database MySQL & server
 ├── index.php               # Entry point antarmuka Web Dashboard
+├── login.php               # Autentikasi administrator
+├── logout.php              # Script logout
 └── README.md
 ```
 

@@ -10,6 +10,12 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     exit;
 }
 
+// Verifikasi kunci perangkat IoT jika DEVICE_API_KEY dikonfigurasi
+if (!verifyDeviceAccess()) {
+    sendJSON(['success' => false, 'message' => 'Unauthorized: Akses perangkat ditolak'], 401);
+    exit;
+}
+
 $uid = isset($_GET['uid']) ? strtoupper(trim($_GET['uid'])) : '';
 
 if (empty($uid)) {
@@ -63,12 +69,16 @@ $sessionName = $sessionNames[$sessionId] ?? ucfirst($sessionId);
 
 // Dapatkan acara aktif
 $activeEvent = $db->query("SELECT id, name FROM events WHERE is_active = 1 LIMIT 1")->fetch();
+if (!$activeEvent) {
+    // Fallback ke acara reguler default (ID 1) agar presensi tidak menjadi data yatim (orphan)
+    $activeEvent = $db->query("SELECT id, name FROM events ORDER BY id ASC LIMIT 1")->fetch();
+}
 $eventId = $activeEvent ? (int)$activeEvent['id'] : null;
 $eventName = $activeEvent ? $activeEvent['name'] : 'Kegiatan HIMA Umum';
 
-// 3. Cek apakah sudah absen pada sesi ini di tanggal yang sama
-$stmtAttend = $db->prepare("SELECT id FROM attendance WHERE student_id = ? AND tap_date = ? AND session_id = ? LIMIT 1");
-$stmtAttend->execute([$student['id'], $today, $sessionId]);
+// 3. Cek apakah sudah absen pada sesi ini di acara dan tanggal yang sama
+$stmtAttend = $db->prepare("SELECT id FROM attendance WHERE student_id = ? AND (event_id = ? OR (event_id IS NULL AND ? IS NULL)) AND tap_date = ? AND session_id = ? LIMIT 1");
+$stmtAttend->execute([$student['id'], $eventId, $eventId, $today, $sessionId]);
 $alreadyAttended = $stmtAttend->fetch();
 
 if ($alreadyAttended) {
