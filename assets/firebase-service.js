@@ -219,9 +219,9 @@ export function initFirebaseListeners() {
         const latestLog = cloudLogs[0];
         console.log("[Firebase] Log Presensi Terkini:", latestLog);
 
-        // Update Live Feed di Dashboard dengan log terbaru
+        // Update Live Feed di Dashboard dengan log terbaru (hanya bunyikan suara jika bukan initial load)
         if (latestLog && typeof window.updateLiveFeed === 'function') {
-          window.updateLiveFeed(latestLog.name, latestLog.waktu);
+          window.updateLiveFeed(latestLog.name, latestLog.waktu, !isInitialLoad);
         }
 
         // Tampilkan Toast jika bukan saat halaman baru pertama kali dibuka

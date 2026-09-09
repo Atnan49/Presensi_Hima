@@ -1,10 +1,6 @@
 <?php
-// ============================================
-// config.php - Konfigurasi Database & App
-// Siap untuk Localhost & Produksi (Hostinger)
-// ============================================
+// Database and application settings for local and Hostinger production environments.
 
-// --- Baca file .env jika tersedia di root ---
 if (file_exists(__DIR__ . '/.env')) {
     $envLines = file(__DIR__ . '/.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
     foreach ($envLines as $line) {
@@ -16,23 +12,31 @@ if (file_exists(__DIR__ . '/.env')) {
             $envVal = trim($envVal, " \t\n\r\0\x0B\"'");
             putenv("$envKey=$envVal");
             $_ENV[$envKey] = $envVal;
+            $_SERVER[$envKey] = $envVal;
         }
     }
 }
 
-// --- Pengaturan Database (Prioritas: Environment Variable / Fallback Default) ---
-define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
-define('DB_NAME', getenv('DB_NAME') ?: 'presensi');
-define('DB_USER', getenv('DB_USER') ?: 'root');
-define('DB_PASS', getenv('DB_PASS') !== false ? getenv('DB_PASS') : '');
-define('DB_PORT', getenv('DB_PORT') ? (int)getenv('DB_PORT') : 3306);
+$readEnv = function($key, $default = '') {
+    if (isset($_ENV[$key]) && $_ENV[$key] !== '') return $_ENV[$key];
+    if (isset($_SERVER[$key]) && $_SERVER[$key] !== '') return $_SERVER[$key];
+    $val = getenv($key);
+    return ($val !== false && $val !== '') ? $val : $default;
+};
 
-// --- Pengaturan Aplikasi ---
+// Database settings (prioritizes .env, falls back to defaults)
+define('DB_HOST', $readEnv('DB_HOST', 'localhost'));
+define('DB_NAME', $readEnv('DB_NAME', 'presensi'));
+define('DB_USER', $readEnv('DB_USER', 'root'));
+define('DB_PASS', $readEnv('DB_PASS', ''));
+define('DB_PORT', (int)$readEnv('DB_PORT', 3306));
+
+// Application settings
 define('APP_NAME', 'Sistem Presensi Mahasiswa');
 define('APP_VERSION', '1.1.0');
 
-// Kunci otentikasi opsional untuk request dari ESP8266 ke api/check_uid.php
-define('DEVICE_API_KEY', getenv('DEVICE_API_KEY') ?: '');
+// Optional API key for ESP8266 direct requests
+define('DEVICE_API_KEY', $readEnv('DEVICE_API_KEY', ''));
 
 // --- Timezone ---
 date_default_timezone_set('Asia/Jakarta');
@@ -46,7 +50,7 @@ function setSecurityHeaders() {
 }
 setSecurityHeaders();
 
-// --- Koneksi Database (PDO) dengan Auto-Setup Database & Tabel ---
+// PDO database connection with automatic table initialization
 function getDB() {
     static $pdo = null;
     if ($pdo === null) {
@@ -57,10 +61,12 @@ function getDB() {
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES   => false,
             ]);
-            // Sinkronkan timezone MySQL dengan Asia/Jakarta (UTC+7)
+            // Synchronize MySQL timezone with Asia/Jakarta (UTC+7)
             $pdo->exec("SET time_zone = '+07:00'");
-            // Pastikan seluruh tabel otomatis tersedia
-            ensureDatabaseTables($pdo);
+            // ponytail: schema initialized via hostinger_import.sql, run ensureDatabaseTables only on explicit init flag
+            if (!empty($_GET['init_tables'])) {
+                ensureDatabaseTables($pdo);
+            }
         } catch (PDOException $e) {
             // Jika database belum dibuat (error 1049: Unknown database), buat otomatis!
             if ($e->getCode() == 1049 || strpos($e->getMessage(), 'Unknown database') !== false) {
@@ -183,10 +189,10 @@ function ensureDatabaseTables($pdo) {
                 $pdo->exec("ALTER TABLE `attendance` ADD COLUMN `session_name` VARCHAR(60) DEFAULT 'Sesi 1 (Datang)' AFTER `session_id`");
                 $pdo->exec("ALTER TABLE `attendance` ADD KEY `idx_session_id` (`session_id`)");
             }
-            // Tambahkan index unik untuk student_id + tap_date + session_id guna mencegah race condition double tap
-            $idxCheck = $pdo->query("SHOW INDEX FROM `attendance` WHERE Key_name = 'uniq_student_date_session'")->fetch();
+            // Tambahkan index unik untuk student_id + event_id + tap_date + session_id
+            $idxCheck = $pdo->query("SHOW INDEX FROM `attendance` WHERE Key_name = 'uniq_student_event_date_session'")->fetch();
             if (!$idxCheck) {
-                $pdo->exec("ALTER TABLE `attendance` ADD UNIQUE KEY `uniq_student_date_session` (`student_id`, `tap_date`, `session_id`)");
+                $pdo->exec("ALTER TABLE `attendance` ADD UNIQUE KEY `uniq_student_event_date_session` (`student_id`, `event_id`, `tap_date`, `session_id`)");
             }
         } catch (Exception $e) {
             // Kolom atau index mungkin sudah ada
@@ -209,12 +215,13 @@ function ensureDatabaseTables($pdo) {
     }
 }
 
-// --- Manajemen Sesi Autentikasi yang Aman ---
+// Session management with HTTPS and cookie security
 function startSessionSafe() {
     if (session_status() === PHP_SESSION_NONE) {
-        $secure = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on';
+        $secure = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') 
+               || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
         session_set_cookie_params([
-            'lifetime' => 86400 * 7, // 7 hari
+            'lifetime' => 86400 * 7,
             'path'     => '/',
             'secure'   => $secure,
             'httponly' => true,
@@ -224,7 +231,7 @@ function startSessionSafe() {
     }
 }
 
-// --- CSRF Token Protection Helpers ---
+// CSRF token protection helpers
 function generateCsrfToken() {
     startSessionSafe();
     if (empty($_SESSION['csrf_token'])) {
@@ -274,8 +281,8 @@ function checkApiAuth() {
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
     if (in_array($method, ['POST', 'PUT', 'DELETE', 'PATCH'], true)) {
         $csrfToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_POST['csrf_token'] ?? '';
-        // Validasi ketat jika token CSRF disertakan atau jika sesi aktif
-        if (!empty($csrfToken) && !verifyCsrfToken($csrfToken)) {
+        // Validasi ketat token CSRF pada seluruh mutasi
+        if (empty($csrfToken) || !verifyCsrfToken($csrfToken)) {
             http_response_code(403);
             echo json_encode([
                 'success' => false,
@@ -297,7 +304,7 @@ function verifyDeviceAccess() {
     return hash_equals($expectedKey, (string)$providedKey);
 }
 
-// --- Helper: Set Header CORS untuk API ---
+// CORS response headers for API requests
 function setCorsHeaders() {
     header('Content-Type: application/json; charset=UTF-8');
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
@@ -317,7 +324,7 @@ function setCorsHeaders() {
     }
 }
 
-// --- Helper: Kirim JSON Response ---
+// Send formatted JSON response
 function sendJSON($data, $code = 200) {
     http_response_code($code);
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);

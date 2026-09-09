@@ -4,7 +4,6 @@
 // ============================================================
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-analytics.js";
 import { 
   getDatabase, 
   ref, 
@@ -12,8 +11,8 @@ import {
   set, 
   push, 
   get, 
-  child,
-  remove,
+  child, 
+  remove, 
   serverTimestamp 
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
@@ -29,9 +28,9 @@ export const firebaseConfig = {
   measurementId: "G-K1QDRSCPF1"
 };
 
-// Inisialisasi App & Database
+// Inisialisasi App & Database (Analytics dinonaktifkan karena tidak digunakan dalam sistem presensi IoT)
 export const app = initializeApp(firebaseConfig);
-export const analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;
+export const analytics = null;
 export const db = getDatabase(app);
 
 // Export Firebase Database Helpers

@@ -630,25 +630,27 @@ $currentUser = getCurrentUser();
     <div class="modal-title">Ubah Password Administrator</div>
     <div class="text-xs text-muted font-mono mb-3">Pastikan password baru kuat dan mudah Anda ingat.</div>
 
-    <div class="form-group">
-      <label class="form-label">Password Lama *</label>
-      <input type="password" id="pwd-old" placeholder="Masukkan password lama">
-    </div>
+    <form id="form-change-password" onsubmit="event.preventDefault(); submitChangePassword();">
+      <div class="form-group">
+        <label class="form-label" for="pwd-old">Password Lama *</label>
+        <input type="password" id="pwd-old" placeholder="Masukkan password lama" autocomplete="current-password" required>
+      </div>
 
-    <div class="form-group">
-      <label class="form-label">Password Baru * (Min. 6 karakter)</label>
-      <input type="password" id="pwd-new" placeholder="Masukkan password baru">
-    </div>
+      <div class="form-group">
+        <label class="form-label" for="pwd-new">Password Baru * (Min. 6 karakter)</label>
+        <input type="password" id="pwd-new" placeholder="Masukkan password baru" autocomplete="new-password" required>
+      </div>
 
-    <div class="form-group">
-      <label class="form-label">Konfirmasi Password Baru *</label>
-      <input type="password" id="pwd-confirm" placeholder="Ulangi password baru">
-    </div>
+      <div class="form-group">
+        <label class="form-label" for="pwd-confirm">Konfirmasi Password Baru *</label>
+        <input type="password" id="pwd-confirm" placeholder="Ulangi password baru" autocomplete="new-password" required>
+      </div>
 
-    <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeChangePasswordModal()">Batal</button>
-      <button class="btn btn-warning" onclick="submitChangePassword()">Simpan Password</button>
-    </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeChangePasswordModal()">Batal</button>
+        <button type="submit" class="btn btn-warning">Simpan Password</button>
+      </div>
+    </form>
   </div>
 </div>
 

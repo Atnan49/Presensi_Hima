@@ -28,11 +28,11 @@
   --color-yellow-hover:    #ffd600;
   --color-yellow-light:    #fffde0;
   
-  --color-red:             #ff3b30;
-  --color-red-hover:       #dc2626;
+  --color-red:             #dc2626;
+  --color-red-hover:       #b91c1c;
   --color-red-light:       #fee2e2;
 
-  --color-danger:          #ff3b30;
+  --color-danger:          #dc2626;
   --color-warning:         #ffe600;
   --color-success:         #16a34a;
   --color-info:            #2563eb;
@@ -70,7 +70,7 @@ body {
   min-height: 100vh;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  /* Grid wireframe background halus */
+  /* Wireframe design identity: minimal blueprint grid (desain.md / R-07 purpose-gate) */
   background-image: 
     linear-gradient(to right, rgba(0, 0, 0, 0.05) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
@@ -1101,6 +1101,7 @@ select:focus {
   display: none;
   align-items: center;
   justify-content: center;
+  padding: 16px;
   z-index: 999;
 }
 
@@ -1114,7 +1115,7 @@ select:focus {
   border: 3px solid #000000;
   box-shadow: var(--shadow-modal);
   width: 100%;
-  max-width: 480px;
+  max-width: min(480px, calc(100vw - 32px));
   padding: 24px;
   animation: modalPop 0.15s ease-out;
 }
@@ -1318,6 +1319,20 @@ select:focus {
 .active-event-badge {
   transition: transform 0.1s ease, box-shadow 0.1s ease;
   user-select: none;
+  max-width: 100%;
+}
+#active-event-title {
+  display: inline-block;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+@media (max-width: 768px) {
+  #active-event-title {
+    max-width: 160px;
+  }
 }
 .active-event-badge:hover {
   transform: translate(-1px, -1px);
