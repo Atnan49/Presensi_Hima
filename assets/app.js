@@ -1,17 +1,47 @@
 // app.js: Frontend controller untuk sistem presensi RFID HIMA (Dual-sync Firebase dan MySQL)
 
-// Global Fetch Interceptor untuk Otomatisasi X-CSRF-Token pada Mutasi
+// Global Fetch Interceptor untuk Otomatisasi X-CSRF-Token pada Mutasi Lokal (Same-Origin)
 const _originalFetch = window.fetch;
 window.fetch = function(input, init = {}) {
   const options = { ...init };
-  const method = (options.method || 'GET').toUpperCase();
-  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+  let method = options.method;
+  if (!method && typeof input === 'object' && input !== null && 'method' in input) {
+    method = input.method;
+  }
+  method = (method || 'GET').toUpperCase();
+
+  // Hanya sematkan X-CSRF-Token pada request ke internal/origin sendiri
+  let isSameOrigin = true;
+  try {
+    let urlStr = '';
+    if (typeof input === 'string') {
+      urlStr = input;
+    } else if (input && typeof input.url === 'string') {
+      urlStr = input.url;
+    } else if (input && typeof input.href === 'string') {
+      urlStr = input.href;
+    }
+    if (/^(https?:)?\/\//i.test(urlStr)) {
+      const parsedUrl = new URL(urlStr, window.location.origin);
+      isSameOrigin = parsedUrl.origin === window.location.origin;
+    }
+  } catch {
+    isSameOrigin = false;
+  }
+
+  if (isSameOrigin && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
     if (csrfToken) {
-      options.headers = {
-        ...(options.headers || {}),
-        'X-CSRF-Token': csrfToken
-      };
+      if (options.headers instanceof Headers) {
+        options.headers.set('X-CSRF-Token', csrfToken);
+      } else if (Array.isArray(options.headers)) {
+        options.headers.push(['X-CSRF-Token', csrfToken]);
+      } else {
+        options.headers = {
+          ...(options.headers || {}),
+          'X-CSRF-Token': csrfToken
+        };
+      }
     }
   }
   return _originalFetch.call(this, input, options);
@@ -212,7 +242,7 @@ function updateDashboardUI() {
   // Live feed (tap terakhir hari ini)
   if (state.attendance.length > 0) {
     const last = state.attendance[0]; // paling baru
-    updateLiveFeed(last.name, last.waktu);
+    updateLiveFeed(last.name, last.waktu, false);
   }
 
   // Unknown cards badge
@@ -256,8 +286,12 @@ function renderDashboardTable(records) {
 }
 
 let lastRecordedTapTime = '';
+let isInitialAppLoad = true;
+setTimeout(() => {
+  isInitialAppLoad = false;
+}, 2000);
 
-function updateLiveFeed(name, time) {
+function updateLiveFeed(name, time, playSound = true) {
   const el = document.getElementById('latest-tap');
   if (!el) return;
   
@@ -273,7 +307,9 @@ function updateLiveFeed(name, time) {
 
   if (time && time !== lastRecordedTapTime) {
     lastRecordedTapTime = time;
-    playTapChime();
+    if (playSound && !isInitialAppLoad) {
+      playTapChime();
+    }
   }
 }
 
@@ -1081,25 +1117,51 @@ async function checkEspStatus() {
 // Audio notification (Web Audio API - Singleton AudioContext)
 let audioChimeEnabled = localStorage.getItem('presensi_audio_chime') !== 'disabled';
 let _sharedAudioCtx = null;
+let hasUserInteracted = false;
 
-function getSharedAudioContext() {
+function unlockAudioContext() {
+  hasUserInteracted = true;
   if (!_sharedAudioCtx) {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (AudioCtx) {
-      _sharedAudioCtx = new AudioCtx();
+      try {
+        _sharedAudioCtx = new AudioCtx();
+      } catch {}
     }
   }
   if (_sharedAudioCtx && _sharedAudioCtx.state === 'suspended') {
+    _sharedAudioCtx.resume().catch(() => {});
+  }
+}
+
+// Buka kunci AudioContext secara otomatis begitu user berinteraksi dengan halaman
+['click', 'touchstart', 'keydown'].forEach(evt => {
+  document.addEventListener(evt, unlockAudioContext, { once: true, passive: true });
+});
+
+function getSharedAudioContext() {
+  if (!hasUserInteracted && !_sharedAudioCtx) {
+    return null;
+  }
+  if (!_sharedAudioCtx) {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) {
+      try {
+        _sharedAudioCtx = new AudioCtx();
+      } catch {}
+    }
+  }
+  if (_sharedAudioCtx && _sharedAudioCtx.state === 'suspended' && hasUserInteracted) {
     _sharedAudioCtx.resume().catch(() => {});
   }
   return _sharedAudioCtx;
 }
 
 function playTapChime() {
-  if (!audioChimeEnabled) return;
+  if (!audioChimeEnabled || !hasUserInteracted) return;
   try {
     const ctx = getSharedAudioContext();
-    if (!ctx) return;
+    if (!ctx || ctx.state !== 'running') return;
     
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
@@ -1123,10 +1185,17 @@ function playTapChime() {
 }
 
 function toggleAudioChime() {
+  unlockAudioContext();
   audioChimeEnabled = !audioChimeEnabled;
   localStorage.setItem('presensi_audio_chime', audioChimeEnabled ? 'enabled' : 'disabled');
   updateAudioToggleUI();
-  if (audioChimeEnabled) playTapChime();
+  if (audioChimeEnabled) {
+    if (_sharedAudioCtx && _sharedAudioCtx.state === 'suspended') {
+      _sharedAudioCtx.resume().then(() => playTapChime()).catch(() => {});
+    } else {
+      playTapChime();
+    }
+  }
 }
 
 function updateAudioToggleUI() {
