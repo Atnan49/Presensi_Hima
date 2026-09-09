@@ -101,9 +101,6 @@ if ($type === 'students') {
         .text-center { text-align: center; }
         .td-uid { font-family: 'Consolas', monospace; font-weight: bold; background-color: #f1f5f9; text-align: center; mso-number-format:"\@"; }
         .nim { mso-number-format:"\@"; text-align: center; font-family: 'Consolas', monospace; }
-        
-        .footer-sign { margin-top: 40px; width: 100%; border-collapse: collapse; }
-        .footer-sign td { border: none; padding: 10px; font-size: 10pt; }
       </style>
     </head>
     <body>
@@ -139,16 +136,6 @@ if ($type === 'students') {
         </tbody>
       </table>
 
-      <table class="footer-sign">
-        <tr>
-          <td style="width: 60%;"></td>
-          <td style="width: 40%; text-align: center;">
-            <div>Petugas / Admin Presensi</div>
-            <div style="height: 60px;"></div>
-            <div style="font-weight: bold; border-bottom: 1px solid #0f172a; display: inline-block; padding-bottom: 2px; min-width: 170px;">( .................................................. )</div>
-          </td>
-        </tr>
-      </table>
     </body>
     </html>
     <?php
@@ -303,9 +290,6 @@ echo "\xEF\xBB\xBF"; // UTF-8 BOM
     .td-uid { font-family: 'Consolas', monospace; font-weight: bold; background-color: #f1f5f9; text-align: center; mso-number-format:"\@"; }
     .nim { mso-number-format:"\@"; text-align: center; font-family: 'Consolas', monospace; }
     .badge-hadir { background-color: #dcfce7; color: #15803d; font-weight: bold; text-align: center; border: 1px solid #86efac; }
-    
-    .footer-sign { margin-top: 40px; width: 100%; border-collapse: collapse; }
-    .footer-sign td { border: none; padding: 10px; font-size: 10pt; }
   </style>
 </head>
 <body>
@@ -351,16 +335,6 @@ echo "\xEF\xBB\xBF"; // UTF-8 BOM
     </tbody>
   </table>
 
-  <table class="footer-sign">
-    <tr>
-      <td style="width: 60%;"></td>
-      <td style="width: 40%; text-align: center;">
-        <div>Petugas / Admin Presensi</div>
-        <div style="height: 60px;"></div>
-        <div style="font-weight: bold; border-bottom: 1px solid #0f172a; display: inline-block; padding-bottom: 2px; min-width: 170px;">( .................................................. )</div>
-      </td>
-    </tr>
-  </table>
 </body>
 </html>
 <?php
