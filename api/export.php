@@ -227,17 +227,16 @@ if ($format === 'csv') {
     fputcsv($out, ['# TOTAL HADIR: ' . count($rows) . ' Mahasiswa']);
     fputcsv($out, ['# WAKTU CETAK: ' . date('d/m/Y H:i:s')]);
     fputcsv($out, ['']);
-    fputcsv($out, ['NO', 'UID KARTU', 'NAMA MAHASISWA', 'NIM', 'SESI PRESENSI', 'TANGGAL', 'JAM TAP', 'STATUS']);
+    fputcsv($out, ['NO', 'NAMA MAHASISWA', 'NIM', 'STATUS KEHADIRAN', 'SESI PRESENSI', 'TANGGAL', 'JAM TAP']);
     foreach ($rows as $i => $r) {
         fputcsv($out, [
             $i + 1,
-            sanitizeCsvFormula($r['uid']),
             sanitizeCsvFormula($r['name']),
             sanitizeCsvFormula($r['nim'] ?: '-'),
+            'HADIR',
             sanitizeCsvFormula($r['session_name']),
             sanitizeCsvFormula($r['tanggal']),
-            sanitizeCsvFormula($r['jam']),
-            'HADIR (TERCATAT)'
+            sanitizeCsvFormula($r['jam'])
         ]);
     }
     fclose($out);
@@ -288,31 +287,29 @@ echo "\xEF\xBB\xBF"; // UTF-8 BOM
     <thead>
       <tr>
         <th>No</th>
-        <th>UID Kartu</th>
         <th>Nama Mahasiswa</th>
         <th>NIM</th>
+        <th>Status Kehadiran</th>
         <th>Sesi Presensi</th>
         <th>Tanggal</th>
         <th>Jam Tap</th>
-        <th>Status</th>
       </tr>
     </thead>
     <tbody>
       <?php if (empty($rows)): ?>
       <tr>
-        <td colspan="8" class="text-center" style="padding: 20px; color: #94a3b8;">Tidak ada data absensi pada tanggal ini</td>
+        <td colspan="7" class="text-center" style="padding: 20px; color: #94a3b8;">Tidak ada data absensi pada tanggal ini</td>
       </tr>
       <?php else: ?>
         <?php foreach ($rows as $i => $r): ?>
         <tr>
           <td class="text-center" style="font-weight: bold;"><?= $i + 1 ?></td>
-          <td class="td-uid"><?= htmlspecialchars($r['uid']) ?></td>
           <td style="font-weight: 600;"><?= htmlspecialchars($r['name']) ?></td>
           <td class="nim"><?= htmlspecialchars($r['nim'] ?: '-') ?></td>
+          <td class="badge-hadir">HADIR</td>
           <td class="text-center" style="font-weight: 600;"><?= htmlspecialchars($r['session_name']) ?></td>
           <td class="text-center"><?= htmlspecialchars($r['tanggal']) ?></td>
           <td class="text-center" style="font-weight: bold;"><?= htmlspecialchars($r['jam']) ?></td>
-          <td class="badge-hadir">[TERCATAT]</td>
         </tr>
         <?php endforeach; ?>
       <?php endif; ?>
