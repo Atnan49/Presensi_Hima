@@ -3,18 +3,6 @@
 
 require_once '../config.php';
 
-// Pastikan hanya admin yang terautentikasi yang dapat mengakses ekspor data
-if (!isLoggedIn()) {
-    http_response_code(401);
-    header('Content-Type: text/html; charset=UTF-8');
-    echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>401 Unauthorized</title><style>body{font-family:sans-serif;padding:40px;text-align:center;background:#0f172a;color:#f8fafc;}a{color:#38bdf8;}</style></head><body>';
-    echo '<h2>401 - Akses Ditolak</h2>';
-    echo '<p>Sesi login diperlukan untuk mengunduh laporan presensi mahasiswa.</p>';
-    echo '<p><a href="../login.php">Klik di sini untuk Login Admin</a></p>';
-    echo '</body></html>';
-    exit;
-}
-
 $type   = $_GET['type']   ?? 'attendance';
 $format = $_GET['format'] ?? 'xls';
 
@@ -101,6 +89,9 @@ if ($type === 'students') {
         .text-center { text-align: center; }
         .td-uid { font-family: 'Consolas', monospace; font-weight: bold; background-color: #f1f5f9; text-align: center; mso-number-format:"\@"; }
         .nim { mso-number-format:"\@"; text-align: center; font-family: 'Consolas', monospace; }
+        
+        .footer-sign { margin-top: 40px; width: 100%; border-collapse: collapse; }
+        .footer-sign td { border: none; padding: 10px; font-size: 10pt; }
       </style>
     </head>
     <body>
@@ -136,6 +127,16 @@ if ($type === 'students') {
         </tbody>
       </table>
 
+      <table class="footer-sign">
+        <tr>
+          <td style="width: 60%;"></td>
+          <td style="width: 40%; text-align: center;">
+            <div>Petugas / Admin Presensi</div>
+            <div style="height: 60px;"></div>
+            <div style="font-weight: bold; border-bottom: 1px solid #0f172a; display: inline-block; padding-bottom: 2px; min-width: 170px;">( .................................................. )</div>
+          </td>
+        </tr>
+      </table>
     </body>
     </html>
     <?php
@@ -143,92 +144,51 @@ if ($type === 'students') {
 }
 
 // --- EXPORT REKAP ABSENSI ---
-$dateRaw   = trim($_GET['date'] ?? date('Y-m-d'));
-$date      = preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateRaw) ? $dateRaw : date('Y-m-d');
+$date      = $_GET['date'] ?? date('Y-m-d');
 $dateAll   = isset($_GET['all']) && $_GET['all'] === '1';
-$eventId   = isset($_GET['event_id']) ? (int)$_GET['event_id'] : 0;
-
-// Validasi session_id hanya nilai yang diizinkan
-$rawSessionId = trim($_GET['session_id'] ?? '');
-$allowedSessions = ['sesi_1', 'sesi_2', 'sesi_3'];
-$sessionId = in_array($rawSessionId, $allowedSessions, true) ? $rawSessionId : '';
-
-$sessionLabel = '';
-if ($sessionId === 'sesi_1') $sessionLabel = 'Sesi 1 (Datang)';
-elseif ($sessionId === 'sesi_2') $sessionLabel = 'Sesi 2 (Ishoma)';
-elseif ($sessionId === 'sesi_3') $sessionLabel = 'Sesi 3 (Pulang)';
-
-// Ambil nama acara / program kerja aktif atau yang difilter
-$activeEventName = '';
-if ($eventId > 0) {
-    $evStmt = $db->prepare("SELECT name FROM events WHERE id = ?");
-    $evStmt->execute([$eventId]);
-    $activeEventName = $evStmt->fetchColumn() ?: '';
-}
-if (empty($activeEventName)) {
-    $evActive = $db->query("SELECT name FROM events WHERE is_active = 1 ORDER BY id DESC LIMIT 1")->fetchColumn();
-    if ($evActive) $activeEventName = $evActive;
-}
-$fallbackProker = !empty($activeEventName) ? $activeEventName : 'Kegiatan HIMA';
-$prokerLabel    = 'Program Kerja: ' . $fallbackProker;
+$sessionId = trim($_GET['session_id'] ?? '');
 
 if ($dateAll) {
     $sql = "
         SELECT s.uid, s.name, s.nim,
-               COALESCE(e.name, ?) AS proker_name,
                COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
                DATE_FORMAT(a.tap_time, '%d/%m/%Y') AS tanggal,
                DATE_FORMAT(a.tap_time, '%H:%i') AS jam
         FROM attendance a
         JOIN students s ON s.id = a.student_id
-        LEFT JOIN events e ON e.id = a.event_id
     ";
-    $params = [$fallbackProker];
-    $whereParts = [];
+    $params = [];
     if (!empty($sessionId)) {
-        $whereParts[] = "a.session_id = ?";
+        $sql .= " WHERE a.session_id = ?";
         $params[] = $sessionId;
-    }
-    if ($eventId > 0) {
-        $whereParts[] = "a.event_id = ?";
-        $params[] = $eventId;
-    }
-    if (!empty($whereParts)) {
-        $sql .= " WHERE " . implode(' AND ', $whereParts);
     }
     $sql .= " ORDER BY a.tap_time DESC";
     $stmt = $db->prepare($sql);
     $stmt->execute($params);
     $filenameBase = 'Rekap_Absensi_Semua_' . date('Ymd_His');
     $title        = 'REKAPITULASI KESELURUHAN PRESENSI';
-    $subtitle     = 'Semua Riwayat Kehadiran Mahasiswa' . (!empty($sessionLabel) ? " (Filter: {$sessionLabel})" : '');
+    $subtitle     = 'Semua Riwayat Kehadiran Mahasiswa' . (!empty($sessionId) ? " (Filter: {$sessionId})" : '');
 } else {
     $sql = "
         SELECT s.uid, s.name, s.nim,
-               COALESCE(e.name, ?) AS proker_name,
                COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
                DATE_FORMAT(a.tap_time, '%d/%m/%Y') AS tanggal,
                DATE_FORMAT(a.tap_time, '%H:%i') AS jam
         FROM attendance a
         JOIN students s ON s.id = a.student_id
-        LEFT JOIN events e ON e.id = a.event_id
         WHERE a.tap_date = ?
     ";
-    $params = [$fallbackProker, $date];
+    $params = [$date];
     if (!empty($sessionId)) {
         $sql .= " AND a.session_id = ?";
         $params[] = $sessionId;
-    }
-    if ($eventId > 0) {
-        $sql .= " AND a.event_id = ?";
-        $params[] = $eventId;
     }
     $sql .= " ORDER BY a.tap_time ASC";
     $stmt = $db->prepare($sql);
     $stmt->execute($params);
     $filenameBase = 'Absensi_' . $date . (!empty($sessionId) ? "_{$sessionId}" : '');
     $title        = 'REKAPITULASI PRESENSI MAHASISWA';
-    $subtitle     = 'Tanggal: ' . date('d/m/Y', strtotime($date)) . (!empty($sessionLabel) ? " | Sesi: {$sessionLabel}" : '');
+    $subtitle     = 'Tanggal: ' . date('d/m/Y', strtotime($date)) . (!empty($sessionId) ? " | Sesi: {$sessionId}" : '');
 }
 
 $rows = $stmt->fetchAll();
@@ -242,17 +202,15 @@ if ($format === 'csv') {
     fputcsv($out, ['# SISTEM PRESENSI MAHASISWA RFID (HIMA)']);
     fputcsv($out, ['# ' . $title]);
     fputcsv($out, ['# ' . $subtitle]);
-    fputcsv($out, ['# ' . $prokerLabel]);
     fputcsv($out, ['# TOTAL HADIR: ' . count($rows) . ' Mahasiswa']);
     fputcsv($out, ['# WAKTU CETAK: ' . date('d/m/Y H:i:s')]);
     fputcsv($out, ['']);
-    fputcsv($out, ['NO', 'NAMA MAHASISWA', 'NIM', 'PROGRAM KERJA', 'STATUS KEHADIRAN', 'SESI PRESENSI', 'TANGGAL', 'JAM TAP']);
+    fputcsv($out, ['NO', 'NAMA MAHASISWA', 'NIM', 'STATUS KEHADIRAN', 'SESI PRESENSI', 'TANGGAL', 'JAM TAP']);
     foreach ($rows as $i => $r) {
         fputcsv($out, [
             $i + 1,
             sanitizeCsvFormula($r['name']),
             sanitizeCsvFormula($r['nim'] ?: '-'),
-            sanitizeCsvFormula($r['proker_name']),
             'HADIR',
             sanitizeCsvFormula($r['session_name']),
             sanitizeCsvFormula($r['tanggal']),
@@ -290,13 +248,16 @@ echo "\xEF\xBB\xBF"; // UTF-8 BOM
     .td-uid { font-family: 'Consolas', monospace; font-weight: bold; background-color: #f1f5f9; text-align: center; mso-number-format:"\@"; }
     .nim { mso-number-format:"\@"; text-align: center; font-family: 'Consolas', monospace; }
     .badge-hadir { background-color: #dcfce7; color: #15803d; font-weight: bold; text-align: center; border: 1px solid #86efac; }
+    
+    .footer-sign { margin-top: 40px; width: 100%; border-collapse: collapse; }
+    .footer-sign td { border: none; padding: 10px; font-size: 10pt; }
   </style>
 </head>
 <body>
   <div class="kop-box">
     <div class="inst-label">HIMPUNAN MAHASISWA (HIMA) - SISTEM PRESENSI RFID</div>
-    <div class="main-title"><?= htmlspecialchars($title, ENT_QUOTES, 'UTF-8') ?></div>
-    <div class="sub-title"><?= htmlspecialchars($subtitle, ENT_QUOTES, 'UTF-8') ?> &bull; <strong><?= htmlspecialchars($prokerLabel, ENT_QUOTES, 'UTF-8') ?></strong></div>
+    <div class="main-title"><?= $title ?></div>
+    <div class="sub-title"><?= $subtitle ?></div>
     <div style="font-size: 9pt; color: #64748b; margin-top: 6px;">Total Hadir: <strong><?= count($rows) ?> Mahasiswa</strong> | Tanggal Export: <?= date('d/m/Y H:i:s') ?></div>
   </div>
 
@@ -306,7 +267,6 @@ echo "\xEF\xBB\xBF"; // UTF-8 BOM
         <th>No</th>
         <th>Nama Mahasiswa</th>
         <th>NIM</th>
-        <th>Program Kerja</th>
         <th>Status Kehadiran</th>
         <th>Sesi Presensi</th>
         <th>Tanggal</th>
@@ -316,7 +276,7 @@ echo "\xEF\xBB\xBF"; // UTF-8 BOM
     <tbody>
       <?php if (empty($rows)): ?>
       <tr>
-        <td colspan="8" class="text-center" style="padding: 20px; color: #94a3b8;">Tidak ada data absensi pada tanggal ini</td>
+        <td colspan="7" class="text-center" style="padding: 20px; color: #94a3b8;">Tidak ada data absensi pada tanggal ini</td>
       </tr>
       <?php else: ?>
         <?php foreach ($rows as $i => $r): ?>
@@ -324,7 +284,6 @@ echo "\xEF\xBB\xBF"; // UTF-8 BOM
           <td class="text-center" style="font-weight: bold;"><?= $i + 1 ?></td>
           <td style="font-weight: 600;"><?= htmlspecialchars($r['name']) ?></td>
           <td class="nim"><?= htmlspecialchars($r['nim'] ?: '-') ?></td>
-          <td style="font-weight: 500;"><?= htmlspecialchars($r['proker_name']) ?></td>
           <td class="badge-hadir">HADIR</td>
           <td class="text-center" style="font-weight: 600;"><?= htmlspecialchars($r['session_name']) ?></td>
           <td class="text-center"><?= htmlspecialchars($r['tanggal']) ?></td>
@@ -335,6 +294,16 @@ echo "\xEF\xBB\xBF"; // UTF-8 BOM
     </tbody>
   </table>
 
+  <table class="footer-sign">
+    <tr>
+      <td style="width: 60%;"></td>
+      <td style="width: 40%; text-align: center;">
+        <div>Petugas / Admin Presensi</div>
+        <div style="height: 60px;"></div>
+        <div style="font-weight: bold; border-bottom: 1px solid #0f172a; display: inline-block; padding-bottom: 2px; min-width: 170px;">( .................................................. )</div>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>
 <?php

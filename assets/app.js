@@ -828,11 +828,10 @@ function downloadExcel(filename, title, period, headers, rows) {
       if (colWidths[0]) colWidths[0].wch = 6;  // No
       if (colWidths[1]) colWidths[1].wch = 28; // Nama
       if (colWidths[2]) colWidths[2].wch = 18; // NIM
-      if (colWidths[3]) colWidths[3].wch = 26; // Program Kerja
-      if (colWidths[4]) colWidths[4].wch = 18; // Status Kehadiran
-      if (colWidths[5]) colWidths[5].wch = 20; // Sesi
-      if (colWidths[6]) colWidths[6].wch = 14; // Tanggal
-      if (colWidths[7]) colWidths[7].wch = 12; // Jam Tap
+      if (colWidths[3]) colWidths[3].wch = 20; // Status Kehadiran
+      if (colWidths[4]) colWidths[4].wch = 20; // Sesi
+      if (colWidths[5]) colWidths[5].wch = 14; // Tanggal
+      if (colWidths[6]) colWidths[6].wch = 12; // Jam Tap
 
       ws['!cols'] = colWidths;
 
@@ -877,8 +876,7 @@ function downloadExcel(filename, title, period, headers, rows) {
         <col width="50">
         <col width="220">
         <col width="140">
-        <col width="200">
-        <col width="140">
+        <col width="160">
         <col width="160">
         <col width="120">
         <col width="100">
@@ -901,8 +899,8 @@ function downloadExcel(filename, title, period, headers, rows) {
               let cls = '';
               if (colIdx === 0) cls = 'text-center';        // No
               else if (colIdx === 2) cls = 'txt';            // NIM
-              else if (colIdx === 4 || String(c).includes('HADIR')) cls = 'badge'; // Status Kehadiran
-              else if (colIdx === 5 || colIdx === 6 || colIdx === 7) cls = 'text-center'; // Sesi, Tanggal, Jam
+              else if (colIdx === 3 || String(c).includes('HADIR')) cls = 'badge'; // Status Kehadiran
+              else if (colIdx === 4 || colIdx === 5 || colIdx === 6) cls = 'text-center'; // Sesi, Tanggal, Jam
               return `<td class="${cls}">${c ?? '-'}</td>`;
             }).join('')}
           </tr>
@@ -929,19 +927,17 @@ function exportAttendanceToday(format = 'csv') {
   const today = state.selectedDate || getLocalDateString();
   const allLogs = window.cloudLogs || state.attendance || [];
   const logsToday = allLogs.filter(l => (l.date || l.tap_date) === today);
-  const activeEventName = state.activeEvent?.name || window.cloudActiveEvent?.name || 'Kegiatan HIMA';
 
   if (logsToday.length === 0) {
     showToast(`Belum ada data presensi hari ini (${today})`, 'warning');
     return;
   }
 
-  const headers = ['No', 'Nama Mahasiswa', 'NIM', 'Program Kerja', 'Status Kehadiran', 'Sesi Presensi', 'Tanggal', 'Jam Tap'];
+  const headers = ['No', 'Nama Mahasiswa', 'NIM', 'Status Kehadiran', 'Sesi Presensi', 'Tanggal', 'Jam Tap'];
   const rows = logsToday.map((r, i) => [
     i + 1,
     r.name,
     r.nim || '-',
-    r.event_name || activeEventName,
     'HADIR',
     formatSessionLabel(r.session_id, r.session_name),
     r.date || r.tap_date || today,
@@ -950,7 +946,7 @@ function exportAttendanceToday(format = 'csv') {
 
   const filename = `Presensi_Hari_Ini_${today}`;
   if (format === 'excel' || format === 'xls') {
-    downloadExcel(filename, `REKAPITULASI PRESENSI MAHASISWA (${activeEventName})`, today, headers, rows);
+    downloadExcel(filename, 'REKAPITULASI PRESENSI MAHASISWA (HARI INI)', today, headers, rows);
   } else {
     downloadCSV(filename, headers, rows);
   }
@@ -961,7 +957,6 @@ function exportAttendance(format = 'csv') {
   const date = document.getElementById('rekap-date')?.value || state.selectedDate || getLocalDateString();
   const sessionFilter = document.getElementById('rekap-session-filter')?.value || '';
   const allLogs = window.cloudLogs || state.attendance || [];
-  const activeEventName = state.activeEvent?.name || window.cloudActiveEvent?.name || 'Kegiatan HIMA';
   let logsFiltered = allLogs.filter(l => (l.date || l.tap_date) === date);
   if (sessionFilter) {
     logsFiltered = logsFiltered.filter(l => (l.session_id || 'sesi_1') === sessionFilter);
@@ -972,12 +967,11 @@ function exportAttendance(format = 'csv') {
     return;
   }
 
-  const headers = ['No', 'Nama Mahasiswa', 'NIM', 'Program Kerja', 'Status Kehadiran', 'Sesi Presensi', 'Tanggal', 'Jam Tap'];
+  const headers = ['No', 'Nama Mahasiswa', 'NIM', 'Status Kehadiran', 'Sesi Presensi', 'Tanggal', 'Jam Tap'];
   const rows = logsFiltered.map((r, i) => [
     i + 1,
     r.name,
     r.nim || '-',
-    r.event_name || activeEventName,
     'HADIR',
     formatSessionLabel(r.session_id, r.session_name),
     r.date || r.tap_date || date,
@@ -987,7 +981,7 @@ function exportAttendance(format = 'csv') {
   const sessSuffix = sessionFilter ? `_${sessionFilter}` : '';
   const filename = `Rekap_Presensi_${date}${sessSuffix}`;
   if (format === 'excel' || format === 'xls') {
-    downloadExcel(filename, `REKAP PRESENSI MAHASISWA (${activeEventName} - ${date}${sessionFilter ? ' - ' + formatSessionLabel(sessionFilter) : ''})`, date, headers, rows);
+    downloadExcel(filename, `REKAP PRESENSI MAHASISWA (${date}${sessionFilter ? ' - ' + formatSessionLabel(sessionFilter) : ''})`, date, headers, rows);
   } else {
     downloadCSV(filename, headers, rows);
   }
@@ -996,19 +990,17 @@ function exportAttendance(format = 'csv') {
 // 3. Export Semua Riwayat Absensi
 function exportAllAttendance(format = 'csv') {
   const allLogs = window.cloudLogs || state.attendance || [];
-  const activeEventName = state.activeEvent?.name || window.cloudActiveEvent?.name || 'Kegiatan HIMA';
 
   if (allLogs.length === 0) {
     showToast('Tidak ada data riwayat presensi', 'warning');
     return;
   }
 
-  const headers = ['No', 'Nama Mahasiswa', 'NIM', 'Program Kerja', 'Status Kehadiran', 'Sesi Presensi', 'Tanggal', 'Jam Tap'];
+  const headers = ['No', 'Nama Mahasiswa', 'NIM', 'Status Kehadiran', 'Sesi Presensi', 'Tanggal', 'Jam Tap'];
   const rows = allLogs.map((r, i) => [
     i + 1,
     r.name,
     r.nim || '-',
-    r.event_name || activeEventName,
     'HADIR',
     formatSessionLabel(r.session_id, r.session_name),
     r.date || r.tap_date || '-',
@@ -1017,7 +1009,7 @@ function exportAllAttendance(format = 'csv') {
 
   const filename = `Rekap_Presensi_Keseluruhan_${getLocalDateString()}`;
   if (format === 'excel' || format === 'xls') {
-    downloadExcel(filename, `REKAP KESELURUHAN LOG PRESENSI MAHASISWA (${activeEventName})`, 'Semua Riwayat', headers, rows);
+    downloadExcel(filename, 'REKAP KESELURUHAN LOG PRESENSI MAHASISWA', 'Semua Riwayat', headers, rows);
   } else {
     downloadCSV(filename, headers, rows);
   }
