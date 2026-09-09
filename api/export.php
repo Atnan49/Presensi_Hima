@@ -159,6 +159,7 @@ if ($type === 'students') {
 $dateRaw   = trim($_GET['date'] ?? date('Y-m-d'));
 $date      = preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateRaw) ? $dateRaw : date('Y-m-d');
 $dateAll   = isset($_GET['all']) && $_GET['all'] === '1';
+$eventId   = isset($_GET['event_id']) ? (int)$_GET['event_id'] : 0;
 
 // Validasi session_id hanya nilai yang diizinkan
 $rawSessionId = trim($_GET['session_id'] ?? '');
@@ -170,19 +171,43 @@ if ($sessionId === 'sesi_1') $sessionLabel = 'Sesi 1 (Datang)';
 elseif ($sessionId === 'sesi_2') $sessionLabel = 'Sesi 2 (Ishoma)';
 elseif ($sessionId === 'sesi_3') $sessionLabel = 'Sesi 3 (Pulang)';
 
+// Ambil nama acara / program kerja aktif atau yang difilter
+$activeEventName = '';
+if ($eventId > 0) {
+    $evStmt = $db->prepare("SELECT name FROM events WHERE id = ?");
+    $evStmt->execute([$eventId]);
+    $activeEventName = $evStmt->fetchColumn() ?: '';
+}
+if (empty($activeEventName)) {
+    $evActive = $db->query("SELECT name FROM events WHERE is_active = 1 ORDER BY id DESC LIMIT 1")->fetchColumn();
+    if ($evActive) $activeEventName = $evActive;
+}
+$fallbackProker = !empty($activeEventName) ? $activeEventName : 'Kegiatan HIMA';
+$prokerLabel    = 'Program Kerja: ' . $fallbackProker;
+
 if ($dateAll) {
     $sql = "
         SELECT s.uid, s.name, s.nim,
+               COALESCE(e.name, ?) AS proker_name,
                COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
                DATE_FORMAT(a.tap_time, '%d/%m/%Y') AS tanggal,
                DATE_FORMAT(a.tap_time, '%H:%i') AS jam
         FROM attendance a
         JOIN students s ON s.id = a.student_id
+        LEFT JOIN events e ON e.id = a.event_id
     ";
-    $params = [];
+    $params = [$fallbackProker];
+    $whereParts = [];
     if (!empty($sessionId)) {
-        $sql .= " WHERE a.session_id = ?";
+        $whereParts[] = "a.session_id = ?";
         $params[] = $sessionId;
+    }
+    if ($eventId > 0) {
+        $whereParts[] = "a.event_id = ?";
+        $params[] = $eventId;
+    }
+    if (!empty($whereParts)) {
+        $sql .= " WHERE " . implode(' AND ', $whereParts);
     }
     $sql .= " ORDER BY a.tap_time DESC";
     $stmt = $db->prepare($sql);
@@ -193,17 +218,23 @@ if ($dateAll) {
 } else {
     $sql = "
         SELECT s.uid, s.name, s.nim,
+               COALESCE(e.name, ?) AS proker_name,
                COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
                DATE_FORMAT(a.tap_time, '%d/%m/%Y') AS tanggal,
                DATE_FORMAT(a.tap_time, '%H:%i') AS jam
         FROM attendance a
         JOIN students s ON s.id = a.student_id
+        LEFT JOIN events e ON e.id = a.event_id
         WHERE a.tap_date = ?
     ";
-    $params = [$date];
+    $params = [$fallbackProker, $date];
     if (!empty($sessionId)) {
         $sql .= " AND a.session_id = ?";
         $params[] = $sessionId;
+    }
+    if ($eventId > 0) {
+        $sql .= " AND a.event_id = ?";
+        $params[] = $eventId;
     }
     $sql .= " ORDER BY a.tap_time ASC";
     $stmt = $db->prepare($sql);
@@ -224,15 +255,17 @@ if ($format === 'csv') {
     fputcsv($out, ['# SISTEM PRESENSI MAHASISWA RFID (HIMA)']);
     fputcsv($out, ['# ' . $title]);
     fputcsv($out, ['# ' . $subtitle]);
+    fputcsv($out, ['# ' . $prokerLabel]);
     fputcsv($out, ['# TOTAL HADIR: ' . count($rows) . ' Mahasiswa']);
     fputcsv($out, ['# WAKTU CETAK: ' . date('d/m/Y H:i:s')]);
     fputcsv($out, ['']);
-    fputcsv($out, ['NO', 'NAMA MAHASISWA', 'NIM', 'STATUS KEHADIRAN', 'SESI PRESENSI', 'TANGGAL', 'JAM TAP']);
+    fputcsv($out, ['NO', 'NAMA MAHASISWA', 'NIM', 'PROGRAM KERJA', 'STATUS KEHADIRAN', 'SESI PRESENSI', 'TANGGAL', 'JAM TAP']);
     foreach ($rows as $i => $r) {
         fputcsv($out, [
             $i + 1,
             sanitizeCsvFormula($r['name']),
             sanitizeCsvFormula($r['nim'] ?: '-'),
+            sanitizeCsvFormula($r['proker_name']),
             'HADIR',
             sanitizeCsvFormula($r['session_name']),
             sanitizeCsvFormula($r['tanggal']),
@@ -279,7 +312,7 @@ echo "\xEF\xBB\xBF"; // UTF-8 BOM
   <div class="kop-box">
     <div class="inst-label">HIMPUNAN MAHASISWA (HIMA) - SISTEM PRESENSI RFID</div>
     <div class="main-title"><?= htmlspecialchars($title, ENT_QUOTES, 'UTF-8') ?></div>
-    <div class="sub-title"><?= htmlspecialchars($subtitle, ENT_QUOTES, 'UTF-8') ?></div>
+    <div class="sub-title"><?= htmlspecialchars($subtitle, ENT_QUOTES, 'UTF-8') ?> &bull; <strong><?= htmlspecialchars($prokerLabel, ENT_QUOTES, 'UTF-8') ?></strong></div>
     <div style="font-size: 9pt; color: #64748b; margin-top: 6px;">Total Hadir: <strong><?= count($rows) ?> Mahasiswa</strong> | Tanggal Export: <?= date('d/m/Y H:i:s') ?></div>
   </div>
 
@@ -289,6 +322,7 @@ echo "\xEF\xBB\xBF"; // UTF-8 BOM
         <th>No</th>
         <th>Nama Mahasiswa</th>
         <th>NIM</th>
+        <th>Program Kerja</th>
         <th>Status Kehadiran</th>
         <th>Sesi Presensi</th>
         <th>Tanggal</th>
@@ -298,7 +332,7 @@ echo "\xEF\xBB\xBF"; // UTF-8 BOM
     <tbody>
       <?php if (empty($rows)): ?>
       <tr>
-        <td colspan="7" class="text-center" style="padding: 20px; color: #94a3b8;">Tidak ada data absensi pada tanggal ini</td>
+        <td colspan="8" class="text-center" style="padding: 20px; color: #94a3b8;">Tidak ada data absensi pada tanggal ini</td>
       </tr>
       <?php else: ?>
         <?php foreach ($rows as $i => $r): ?>
@@ -306,6 +340,7 @@ echo "\xEF\xBB\xBF"; // UTF-8 BOM
           <td class="text-center" style="font-weight: bold;"><?= $i + 1 ?></td>
           <td style="font-weight: 600;"><?= htmlspecialchars($r['name']) ?></td>
           <td class="nim"><?= htmlspecialchars($r['nim'] ?: '-') ?></td>
+          <td style="font-weight: 500;"><?= htmlspecialchars($r['proker_name']) ?></td>
           <td class="badge-hadir">HADIR</td>
           <td class="text-center" style="font-weight: 600;"><?= htmlspecialchars($r['session_name']) ?></td>
           <td class="text-center"><?= htmlspecialchars($r['tanggal']) ?></td>
