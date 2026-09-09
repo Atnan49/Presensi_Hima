@@ -10,8 +10,11 @@ $currentUser = getCurrentUser();
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sistem Presensi HIMATIF - RFID / ESP8266</title>
   <meta name="description" content="Dashboard Presensi Mahasiswa Berbasis RFID dan IoT ESP8266 HIMATIF UMS">
-  <link rel="icon" type="image/png" href="assets/Image/logo-himatif-light.png">
-  <link rel="apple-touch-icon" href="assets/Image/logo-himatif-light.png">
+  <link rel="icon" type="image/x-icon" href="assets/Image/favicon.ico?v=2">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/Image/favicon-32x32.png?v=2">
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/Image/favicon-16x16.png?v=2">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/Image/apple-touch-icon.png?v=2">
+  <link rel="manifest" href="site.webmanifest">
   <meta name="csrf-token" content="<?= htmlspecialchars(generateCsrfToken()) ?>">
   <link rel="stylesheet" href="assets/style.css?v=<?= @filemtime(__DIR__ . '/assets/style.css') ?: time() ?>">
 </head>
