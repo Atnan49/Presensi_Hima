@@ -131,6 +131,9 @@ const API = {
 
 // Navigation and panel switching
 function showPanel(name) {
+  if (!name || typeof name !== 'string') {
+    name = 'dashboard';
+  }
   state.currentPanel = name;
 
   // Toggle active class di nav items
@@ -143,8 +146,13 @@ function showPanel(name) {
     el.classList.remove('active');
   });
 
-  // Tampilkan panel yang dipilih
-  const targetPanel = document.getElementById(`panel-${name}`) || document.getElementById(name);
+  // Tampilkan panel yang dipilih (fallback aman ke panel-dashboard jika target tidak ditemukan)
+  let targetPanel = document.getElementById(`panel-${name}`) || document.getElementById(name);
+  if (!targetPanel) {
+    targetPanel = document.getElementById('panel-dashboard');
+    name = 'dashboard';
+    state.currentPanel = 'dashboard';
+  }
   if (targetPanel) {
     targetPanel.classList.add('active');
   }
