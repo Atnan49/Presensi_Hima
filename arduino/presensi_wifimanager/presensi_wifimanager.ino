@@ -21,21 +21,21 @@
  *      selama 3 detik saat alat baru dinyalakan.
  *
  * WIRING AMAN (ANTI GAGAL BOOT):
- *   PN532 VCC  → 3.3V (pin 3V3 di NodeMCU - BUKAN 5V!)
- *   PN532 GND  → GND
- *   PN532 SCK  → D5 (GPIO14)
- *   PN532 MISO → D6 (GPIO12)
- *   PN532 MOSI → D7 (GPIO13)
- *   PN532 SS   → D0 (GPIO16)  <-- Agar ESP bisa booting normal
- *   PN532 RSTO → Kosongkan
+ *   PN532 VCC  -> 3.3V (pin 3V3 di NodeMCU - BUKAN 5V!)
+ *   PN532 GND  -> GND
+ *   PN532 SCK  -> D5 (GPIO14)
+ *   PN532 MISO -> D6 (GPIO12)
+ *   PN532 MOSI -> D7 (GPIO13)
+ *   PN532 SS   -> D0 (GPIO16)  <-- Agar ESP bisa booting normal
+ *   PN532 RSTO -> Kosongkan
  *
- *   LCD VCC    → VIN (5V dari adaptor)
- *   LCD GND    → GND
- *   LCD SDA    → D2 (GPIO4)
- *   LCD SCL    → D1 (GPIO5)
+ *   LCD VCC    -> VIN (5V dari adaptor)
+ *   LCD GND    -> GND
+ *   LCD SDA    -> D2 (GPIO4)
+ *   LCD SCL    -> D1 (GPIO5)
  *
- *   Buzzer +   → D8 (GPIO15)
- *   Buzzer -   → GND
+ *   Buzzer +   -> D8 (GPIO15)
+ *   Buzzer -   -> GND
  *
  *   Tombol Reset Wi-Fi Manual: Tombol "FLASH" bawaan di board NodeMCU (GPIO0)
  * ============================================================
@@ -93,8 +93,18 @@ FirebaseConfig config;
 // VARIABEL GLOBAL
 // ============================================================
 unsigned long lastDebounce   = 0;
-const long    DEBOUNCE_DELAY = 1500;  
+const long    DEBOUNCE_DELAY = 800;  // OPTIMASI 5: Debounce lebih cepat (sebelumnya 1500)
 String        lastUID        = "";
+
+// OPTIMASI 1 & 4: CACHE & ASYNC LOG
+String cachedSessionId = "sesi_1";
+String cachedSessionName = "Sesi 1 (Datang)";
+String cachedEventName = "";
+unsigned long lastCacheUpdate = 0;
+const long CACHE_INTERVAL = 30000; // 30 detik
+
+bool hasPendingLog = false;
+FirebaseJson pendingLogData;
 
 // ============================================================
 // BUZZER - MANUAL PWM (Anti-Interference)
@@ -117,6 +127,7 @@ void playTone(int freq, int durationMs) {
     }
     interrupts();                            
     done += batch;
+    yield(); // Mencegah reset Software Watchdog Timer ESP8266
   }
   digitalWrite(BUZZER_PIN, LOW);
 }
@@ -129,14 +140,75 @@ void buzzAlready()   { playTone(2700, 70); delay(60); playTone(2700, 70); delay(
 void buzzError()     { playTone(400, 120); delay(60); playTone(400, 120); delay(60); playTone(250, 500); }
 
 // ============================================================
-// LCD HELPER
+// LCD HELPER (Proteksi Batas 16 Karakter Aman)
 // ============================================================
 void lcdPrint(const char* baris1, const char* baris2 = "") {
   lcd.clear();
-  lcd.setCursor(0, 0); lcd.print(baris1);
-  if (strlen(baris2) > 0) {
-    lcd.setCursor(0, 1); lcd.print(baris2);
+  lcd.setCursor(0, 0);
+  char buf1[17];
+  strncpy(buf1, baris1 ? baris1 : "", 16);
+  buf1[16] = '\0';
+  lcd.print(buf1);
+
+  if (baris2 && strlen(baris2) > 0) {
+    lcd.setCursor(0, 1);
+    char buf2[17];
+    strncpy(buf2, baris2, 16);
+    buf2[16] = '\0';
+    lcd.print(buf2);
   }
+}
+
+// Helper teks rata tengah (Center text) untuk layar 16 kolom
+String centerText(String text, int width = 16) {
+  if ((int)text.length() >= width) return text.substring(0, width);
+  int pad = (width - (int)text.length()) / 2;
+  String out = "";
+  for (int i = 0; i < pad; i++) out += " ";
+  out += text;
+  while ((int)out.length() < width) out += " ";
+  return out;
+}
+
+// Format nama mahasiswa agar rapi di layar LCD 16 kolom (tanpa terpotong jelek)
+String formatNamaLCD(String fullName) {
+  fullName.trim();
+  if (fullName.length() <= 16) return fullName;
+
+  // Singkat awalan nama panjang umum jika diperlukan
+  String lower = fullName;
+  lower.toLowerCase();
+  if (lower.startsWith("muhammad ")) {
+    fullName = "M. " + fullName.substring(9);
+  } else if (lower.startsWith("muh. ")) {
+    fullName = "M. " + fullName.substring(5);
+  } else if (lower.startsWith("mochamad ")) {
+    fullName = "M. " + fullName.substring(9);
+  }
+
+  if (fullName.length() <= 16) return fullName;
+
+  // Potong pada batas spasi kata terakhir yang muat agar kata tidak terpenggal di tengah
+  int lastSpace = fullName.substring(0, 17).lastIndexOf(' ');
+  if (lastSpace > 6) {
+    return fullName.substring(0, lastSpace);
+  }
+
+  return fullName.substring(0, 16);
+}
+
+// Format nama sesi ramah LCD 16 kolom (tanpa terpotong jelek)
+String formatSesiLCD(String id, String rawName) {
+  if (id == "sesi_1") return "Sesi 1 (Datang)";
+  if (id == "sesi_2") return "Sesi 2 (Ishoma)";
+  if (id == "sesi_3") return "Sesi 3 (Pulang)";
+  if (rawName.length() > 16) return rawName.substring(0, 16);
+  return rawName;
+}
+
+// Tampilan layar siap / standby
+void tampilkanStandby() {
+  lcdPrint("PRESENSI HIMATIF", ">> SILAKAN TAP<<");
 }
 
 // Callback dipanggil jika ESP masuk mode Access Point (menunggu panitia setting Wi-Fi)
@@ -199,6 +271,28 @@ void setupWiFi() {
 }
 
 // ============================================================
+// REFRESH CACHE (OPTIMASI 1)
+// ============================================================
+void refreshCache() {
+  if (WiFi.status() == WL_CONNECTED && Firebase.ready()) {
+    if (Firebase.RTDB.getString(&fbdo, "/active_session/id")) {
+      String s = fbdo.stringData();
+      if (s.length() > 0 && s != "null") cachedSessionId = s;
+    }
+    if (Firebase.RTDB.getString(&fbdo, "/active_session/name")) {
+      String s = fbdo.stringData();
+      if (s.length() > 0 && s != "null") cachedSessionName = s;
+    }
+    if (Firebase.RTDB.getString(&fbdo, "/active_event/name")) {
+      String s = fbdo.stringData();
+      if (s.length() > 0 && s != "null") cachedEventName = s;
+    }
+    lastCacheUpdate = millis();
+    Serial.println("[CACHE] Diperbarui: " + cachedSessionName + " | Event: " + cachedEventName);
+  }
+}
+
+// ============================================================
 // BACA UID KARTU PN532
 // ============================================================
 String bacaKartu() {
@@ -223,14 +317,46 @@ String bacaKartu() {
 // ============================================================
 void handleUnknownCard(String uid) {
   Serial.println("[NEW] Kartu baru terdeteksi. UID: " + uid);
-  lcdPrint("Kartu Baru!", "Menyimpan UID...");
   buzzUnknown();
+  lcdPrint("  KARTU BARU!   ", centerText("UID: " + uid).c_str());
 
-  // Otomatis kirim UID tidak dikenal ke Firebase
-  Firebase.RTDB.setString(&fbdo, "/unknown_cards/" + uid, "Belum Terdaftar");
+  String path = "/unknown_cards/" + uid;
+  int currentTap = 0;
+  if (Firebase.RTDB.getInt(&fbdo, path + "/tap_count")) {
+    currentTap = fbdo.intData();
+  }
 
-  delay(1500);
-  lcdPrint("Tap Kartu...", "");
+  time_t now = time(nullptr);
+  struct tm* ptm = localtime(&now);
+  bool ntpReady = (ptm && ptm->tm_year > 100);
+
+  FirebaseJson json;
+  json.set("tap_count", currentTap + 1);
+
+  if (ntpReady) {
+    char timeStr[32];
+    snprintf(timeStr, sizeof(timeStr), "%04d-%02d-%02dT%02d:%02d:%02d",
+             ptm->tm_year + 1900, ptm->tm_mon + 1, ptm->tm_mday,
+             ptm->tm_hour, ptm->tm_min, ptm->tm_sec);
+    if (currentTap == 0) {
+      json.set("first_seen", timeStr);
+    }
+    json.set("last_seen", timeStr);
+    json.set("timestamp", (double)now * 1000);
+  } else {
+    json.set("last_seen/.sv", "timestamp");
+    if (currentTap == 0) {
+      json.set("first_seen/.sv", "timestamp");
+    }
+  }
+
+  // Gunakan updateNode agar data first_seen tidak tertimpa saat tap berulang
+  Firebase.RTDB.updateNode(&fbdo, path, &json);
+
+  delay(600); // OPTIMASI 3: Delay LCD dikurangi
+  lcdPrint("BELUM TERDAFTAR ", "Daftar ke Admin ");
+  delay(600); // OPTIMASI 3: Delay LCD dikurangi
+  tampilkanStandby();
 }
 
 // ============================================================
@@ -238,27 +364,41 @@ void handleUnknownCard(String uid) {
 // ============================================================
 void prosesTapKartu(String uid) {
   if (WiFi.status() != WL_CONNECTED) {
-    lcdPrint("WiFi Lepas!", "Reconnecting...");
+    lcdPrint("  WIFI LEPAS!   ", "Reconnecting...");
     setupWiFi();
-    lcdPrint("Tap Kartu...", "");
+    tampilkanStandby();
     return;
   }
 
   Serial.println("[Firebase] Mengecek UID di Cloud: " + uid);
-  lcdPrint("Memproses...", uid.c_str());
+  lcdPrint("  MEMBACA DATA  ", centerText("UID: " + uid).c_str());
 
   if (!Firebase.ready()) {
-    lcdPrint("Firebase Belum", "Siap / Ready");
+    lcdPrint("  SERVER CLOUD  ", " Belum Siap...  ");
     buzzError();
-    delay(2000);
-    lcdPrint("Tap Kartu...", "");
+    delay(1800);
+    tampilkanStandby();
     return;
   }
 
-  // Cek langsung field nama di /users/{uid}/name
-  String pathName = "/users/" + uid + "/name";
-  if (Firebase.RTDB.getString(&fbdo, pathName) && fbdo.dataType() == "string" && fbdo.stringData().length() > 0 && fbdo.stringData() != "null") {
-    String nama = fbdo.stringData();
+  // Cek JSON data user sekaligus (OPTIMASI 2)
+  String pathUser = "/users/" + uid;
+  if (Firebase.RTDB.getJSON(&fbdo, pathUser)) {
+    FirebaseJson& jsonUser = fbdo.jsonObject();
+    FirebaseJsonData jsonData;
+    
+    jsonUser.get(jsonData, "name");
+    String nama = jsonData.stringValue;
+    if (nama.length() == 0 || nama == "null") {
+       handleUnknownCard(uid);
+       return;
+    }
+    
+    String nim = "";
+    if (jsonUser.get(jsonData, "nim")) {
+      nim = jsonData.stringValue;
+      if (nim == "null") nim = "";
+    }
     
     // Ambil waktu dari NTP
     time_t now = time(nullptr);
@@ -273,67 +413,79 @@ void prosesTapKartu(String uid) {
       snprintf(dateBuf, sizeof(dateBuf), "%04d-%02d-%02d", ptm->tm_year + 1900, ptm->tm_mon + 1, ptm->tm_mday);
     }
 
-    // Ambil info sesi aktif jika ada di /active_session (default: sesi_1)
-    String sessionId = "sesi_1";
-    String sessionName = "Sesi 1 (Datang)";
-    if (Firebase.RTDB.getString(&fbdo, "/active_session/id") && fbdo.dataType() == "string" && fbdo.stringData().length() > 0 && fbdo.stringData() != "null") {
-      sessionId = fbdo.stringData();
-    }
-    if (Firebase.RTDB.getString(&fbdo, "/active_session/name") && fbdo.dataType() == "string" && fbdo.stringData().length() > 0 && fbdo.stringData() != "null") {
-      sessionName = fbdo.stringData();
-    }
+    // Format nama mahasiswa untuk tampilan LCD
+    String namaDisplay = formatNamaLCD(nama);
+
+    // Gunakan cache untuk sesi dan acara (OPTIMASI 1)
+    String sessionId = cachedSessionId;
+    String sessionName = cachedSessionName;
+    String eventName = cachedEventName;
 
     // Cek apakah mahasiswa sudah tap pada SESI aktif hari ini
     String pathToday = "/attendance_today/" + String(dateBuf) + "_" + sessionId + "/" + uid;
     if (Firebase.RTDB.getBool(&fbdo, pathToday) && fbdo.dataType() == "boolean" && fbdo.boolData() == true) {
       Serial.println("[INFO] Kartu sudah absen di sesi " + sessionName + ": " + nama);
       buzzAlready();
-      lcdPrint("Sudah Absen!", sessionName.substring(0, 16).c_str());
-      delay(1500);
-      lcdPrint("Tap Kartu...", "");
+      
+      // Layar 1: Nama Mahasiswa di Baris 1 + Status Peringatan di Baris 2
+      lcdPrint(centerText(namaDisplay).c_str(), " ! SUDAH ABSEN !");
+      delay(700); // OPTIMASI 3: Delay LCD dikurangi
+
+      // Layar 2: Info Sesi
+      String sesiFormat = formatSesiLCD(sessionId, sessionName);
+      lcdPrint(centerText(sesiFormat).c_str(), "Data Tersimpan :)");
+      delay(500); // OPTIMASI 3: Delay LCD dikurangi
+
+      tampilkanStandby();
       return;
     }
 
     // Tandai sudah tap pada sesi ini di cloud
     Firebase.RTDB.setBool(&fbdo, pathToday, true);
 
-    // Ambil info nama acara aktif jika tersedia di /active_event/name
-    String eventName = "";
-    if (Firebase.RTDB.getString(&fbdo, "/active_event/name") && fbdo.dataType() == "string") {
-      eventName = fbdo.stringData();
-    }
-
     Serial.println("[OK] Absen Berhasil (" + sessionName + "): " + nama);
     buzzSuccess();
-    lcdPrint(sessionName.substring(0, 16).c_str(), nama.substring(0, 16).c_str());
-    delay(1200);
 
-    // Kirim log absen ke Firebase (/log_presensi)
-    FirebaseJson logData;
-    logData.set("uid", uid);
-    logData.set("name", nama);
-    logData.set("session_id", sessionId);
-    logData.set("session_name", sessionName);
+    // Layar 1: Nama Mahasiswa di Baris 1 + Status Hadir & Waktu di Baris 2
+    String statusHadir = ntpReady ? "HADIR - " + String(waktuBuf) : "ABSEN BERHASIL!";
+    lcdPrint(centerText(namaDisplay).c_str(), centerText(statusHadir).c_str());
+    delay(800); // OPTIMASI 3: Delay LCD dikurangi
+
+    // Layar 2: Info Sesi & NIM / Salam
+    String sesiFormat = formatSesiLCD(sessionId, sessionName);
+    String barisDua   = (nim.length() > 0) ? "NIM: " + nim : " TERIMA KASIH!  ";
+    lcdPrint(centerText(sesiFormat).c_str(), centerText(barisDua).c_str());
+    delay(600); // OPTIMASI 3: Delay LCD dikurangi
+
+    // Siapkan log absen untuk dikirim asinkron (OPTIMASI 4)
+    pendingLogData.clear();
+    pendingLogData.set("uid", uid);
+    pendingLogData.set("name", nama);
+    if (nim.length() > 0) {
+      pendingLogData.set("nim", nim);
+    }
+    pendingLogData.set("session_id", sessionId);
+    pendingLogData.set("session_name", sessionName);
 
     if (eventName.length() > 0 && eventName != "null") {
-      logData.set("event_name", eventName);
+      pendingLogData.set("event_name", eventName);
     }
 
     if (ntpReady) {
-      logData.set("waktu", waktuBuf);
-      logData.set("date", dateBuf);
-      logData.set("timestamp", (double)now * 1000);
+      pendingLogData.set("waktu", waktuBuf);
+      pendingLogData.set("date", dateBuf);
+      pendingLogData.set("timestamp", (double)now * 1000);
     } else {
-      logData.set("timestamp/.sv", "timestamp");
+      pendingLogData.set("timestamp/.sv", "timestamp");
     }
-
-    Firebase.RTDB.pushJSON(&fbdo, "/log_presensi", &logData);
+    
+    hasPendingLog = true;
 
   } else {
     handleUnknownCard(uid);
   }
 
-  lcdPrint("Tap Kartu...", "");
+  tampilkanStandby();
 }
 
 // ============================================================
@@ -400,7 +552,10 @@ void setup() {
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
 
-  lcdPrint("Siap Presensi!", "Tap Kartu...");
+  // OPTIMASI 1: Ambil data cache pertama kali
+  refreshCache();
+
+  tampilkanStandby();
   buzzConnected(); 
 }
 
@@ -412,11 +567,25 @@ void loop() {
 
   unsigned long sekarang = millis();
 
+  // Refresh cache berkala tiap CACHE_INTERVAL (OPTIMASI 1)
+  if (sekarang - lastCacheUpdate > CACHE_INTERVAL) {
+    refreshCache();
+  }
+
+  // Proses pending log secara asinkron (OPTIMASI 4)
+  if (hasPendingLog) {
+    if (WiFi.status() == WL_CONNECTED && Firebase.ready()) {
+      Firebase.RTDB.pushJSON(&fbdo, "/log_presensi", &pendingLogData);
+      hasPendingLog = false;
+      Serial.println("[LOG] Log presensi berhasil dikirim (Async)");
+    }
+  }
+
   // Pastikan koneksi Wi-Fi tetap aktif
   if (WiFi.status() != WL_CONNECTED) {
-    lcdPrint("WiFi Lepas!", "Reconnecting...");
+    lcdPrint("  WIFI LEPAS!   ", "Reconnecting...");
     setupWiFi();
-    lcdPrint("Tap Kartu...", "");
+    tampilkanStandby();
     return;
   }
 
