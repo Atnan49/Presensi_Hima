@@ -826,12 +826,12 @@ function downloadExcel(filename, title, period, headers, rows) {
 
       // Override lebar khusus agar nyaman
       if (colWidths[0]) colWidths[0].wch = 6;  // No
-      if (colWidths[1]) colWidths[1].wch = 20; // UID
-      if (colWidths[2]) colWidths[2].wch = 28; // Nama
-      if (colWidths[3]) colWidths[3].wch = 18; // NIM
-      if (colWidths[4]) colWidths[4].wch = 16; // Tanggal
-      if (colWidths[5]) colWidths[5].wch = 12; // Jam
-      if (colWidths[6]) colWidths[6].wch = 20; // Status
+      if (colWidths[1]) colWidths[1].wch = 28; // Nama
+      if (colWidths[2]) colWidths[2].wch = 18; // NIM
+      if (colWidths[3]) colWidths[3].wch = 20; // Status Kehadiran
+      if (colWidths[4]) colWidths[4].wch = 20; // Sesi
+      if (colWidths[5]) colWidths[5].wch = 14; // Tanggal
+      if (colWidths[6]) colWidths[6].wch = 12; // Jam Tap
 
       ws['!cols'] = colWidths;
 
@@ -874,12 +874,12 @@ function downloadExcel(filename, title, period, headers, rows) {
     <body>
       <table>
         <col width="50">
-        <col width="160">
         <col width="220">
         <col width="140">
+        <col width="160">
+        <col width="160">
         <col width="120">
         <col width="100">
-        <col width="160">
         <tr>
           <td colspan="${numCols}" class="header-title">${title}</td>
         </tr>
@@ -897,10 +897,10 @@ function downloadExcel(filename, title, period, headers, rows) {
           <tr style="${i % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
             ${r.map((c, colIdx) => {
               let cls = '';
-              if (colIdx === 0) cls = 'text-center';
-              else if (colIdx === 1 || colIdx === 3) cls = 'txt';
-              else if (colIdx === 4 || colIdx === 5) cls = 'text-center';
-              else if (colIdx === 6 || String(c).includes('HADIR')) cls = 'badge';
+              if (colIdx === 0) cls = 'text-center';        // No
+              else if (colIdx === 2) cls = 'txt';            // NIM
+              else if (colIdx === 3 || String(c).includes('HADIR')) cls = 'badge'; // Status Kehadiran
+              else if (colIdx === 4 || colIdx === 5 || colIdx === 6) cls = 'text-center'; // Sesi, Tanggal, Jam
               return `<td class="${cls}">${c ?? '-'}</td>`;
             }).join('')}
           </tr>
@@ -933,16 +933,15 @@ function exportAttendanceToday(format = 'csv') {
     return;
   }
 
-  const headers = ['No', 'UID Kartu', 'Nama Mahasiswa', 'NIM', 'Sesi Presensi', 'Tanggal', 'Jam Tap', 'Status Kehadiran'];
+  const headers = ['No', 'Nama Mahasiswa', 'NIM', 'Status Kehadiran', 'Sesi Presensi', 'Tanggal', 'Jam Tap'];
   const rows = logsToday.map((r, i) => [
     i + 1,
-    r.uid,
     r.name,
     r.nim || '-',
+    'HADIR',
     formatSessionLabel(r.session_id, r.session_name),
     r.date || r.tap_date || today,
-    r.waktu,
-    'HADIR (TERCATAT)'
+    r.waktu
   ]);
 
   const filename = `Presensi_Hari_Ini_${today}`;
@@ -968,16 +967,15 @@ function exportAttendance(format = 'csv') {
     return;
   }
 
-  const headers = ['No', 'UID Kartu', 'Nama Mahasiswa', 'NIM', 'Sesi Presensi', 'Tanggal', 'Jam Tap', 'Status Kehadiran'];
+  const headers = ['No', 'Nama Mahasiswa', 'NIM', 'Status Kehadiran', 'Sesi Presensi', 'Tanggal', 'Jam Tap'];
   const rows = logsFiltered.map((r, i) => [
     i + 1,
-    r.uid,
     r.name,
     r.nim || '-',
+    'HADIR',
     formatSessionLabel(r.session_id, r.session_name),
     r.date || r.tap_date || date,
-    r.waktu,
-    'HADIR (TERCATAT)'
+    r.waktu
   ]);
 
   const sessSuffix = sessionFilter ? `_${sessionFilter}` : '';
@@ -998,16 +996,15 @@ function exportAllAttendance(format = 'csv') {
     return;
   }
 
-  const headers = ['No', 'UID Kartu', 'Nama Mahasiswa', 'NIM', 'Sesi Presensi', 'Tanggal', 'Jam Tap', 'Status Kehadiran'];
+  const headers = ['No', 'Nama Mahasiswa', 'NIM', 'Status Kehadiran', 'Sesi Presensi', 'Tanggal', 'Jam Tap'];
   const rows = allLogs.map((r, i) => [
     i + 1,
-    r.uid,
     r.name,
     r.nim || '-',
+    'HADIR',
     formatSessionLabel(r.session_id, r.session_name),
     r.date || r.tap_date || '-',
-    r.waktu,
-    'HADIR (TERCATAT)'
+    r.waktu
   ]);
 
   const filename = `Rekap_Presensi_Keseluruhan_${getLocalDateString()}`;
