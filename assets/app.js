@@ -142,6 +142,12 @@ function showPanel(name) {
   document.querySelectorAll('.panel, .panel-section').forEach(el => {
     el.classList.remove('active');
   });
+
+  // Tampilkan panel yang dipilih
+  const targetPanel = document.getElementById(`panel-${name}`) || document.getElementById(name);
+  if (targetPanel) {
+    targetPanel.classList.add('active');
+  }
   // Update header page title & subtitle
   const panelTitles = {
     dashboard: ['Dashboard', 'Rekap absensi kehadiran hari ini'],
