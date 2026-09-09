@@ -13,7 +13,7 @@ $currentUser = getCurrentUser();
   <link rel="icon" type="image/png" href="assets/Image/logo-himatif-light.png">
   <link rel="apple-touch-icon" href="assets/Image/logo-himatif-light.png">
   <meta name="csrf-token" content="<?= htmlspecialchars(generateCsrfToken()) ?>">
-  <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/style.css?v=<?= @filemtime(__DIR__ . '/assets/style.css') ?: time() ?>">
 </head>
 <body>
 
@@ -658,7 +658,7 @@ $currentUser = getCurrentUser();
 <div class="toast-container" id="toast-container"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="assets/app.js"></script>
-<script type="module" src="assets/firebase-service.js"></script>
+<script src="assets/app.js?v=<?= @filemtime(__DIR__ . '/assets/app.js') ?: time() ?>"></script>
+<script type="module" src="assets/firebase-service.js?v=<?= @filemtime(__DIR__ . '/assets/firebase-service.js') ?: time() ?>"></script>
 </body>
 </html>
