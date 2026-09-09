@@ -6,7 +6,7 @@ startSessionSafe();
 
 // Jika sudah login, langsung ke dashboard
 if (isLoggedIn()) {
-    header('Location: index.php');
+    header('Location: ./');
     exit;
 }
 
@@ -44,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'username' => $admin['username'],
                             'name'     => $admin['name']
                         ];
-                        header('Location: index.php');
+                        header('Location: ./');
                         exit;
                     } else {
                         // Rate limiting percobaan login
