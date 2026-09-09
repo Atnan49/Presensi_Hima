@@ -832,16 +832,15 @@ function exportAttendanceToday(format = 'csv') {
     return;
   }
 
-  const headers = ['No', 'UID Kartu', 'Nama Mahasiswa', 'NIM', 'Sesi Presensi', 'Tanggal', 'Jam Tap', 'Status Kehadiran'];
+  const headers = ['No', 'Nama Mahasiswa', 'NIM', 'Status Kehadiran', 'Sesi Presensi', 'Tanggal', 'Jam Tap'];
   const rows = logsToday.map((r, i) => [
     i + 1,
-    r.uid,
     r.name,
     r.nim || '-',
+    'HADIR',
     formatSessionLabel(r.session_id, r.session_name),
     r.date || today,
-    r.waktu,
-    'HADIR (TERCATAT)'
+    r.waktu
   ]);
 
   const filename = `Presensi_Hari_Ini_${today}`;
