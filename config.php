@@ -63,8 +63,10 @@ function getDB() {
             ]);
             // Synchronize MySQL timezone with Asia/Jakarta (UTC+7)
             $pdo->exec("SET time_zone = '+07:00'");
-            // Verify that required tables exist
-            ensureDatabaseTables($pdo);
+            // ponytail: schema initialized via hostinger_import.sql, run ensureDatabaseTables only on explicit init flag
+            if (!empty($_GET['init_tables'])) {
+                ensureDatabaseTables($pdo);
+            }
         } catch (PDOException $e) {
             // Jika database belum dibuat (error 1049: Unknown database), buat otomatis!
             if ($e->getCode() == 1049 || strpos($e->getMessage(), 'Unknown database') !== false) {
@@ -187,10 +189,10 @@ function ensureDatabaseTables($pdo) {
                 $pdo->exec("ALTER TABLE `attendance` ADD COLUMN `session_name` VARCHAR(60) DEFAULT 'Sesi 1 (Datang)' AFTER `session_id`");
                 $pdo->exec("ALTER TABLE `attendance` ADD KEY `idx_session_id` (`session_id`)");
             }
-            // Tambahkan index unik untuk student_id + tap_date + session_id guna mencegah race condition double tap
-            $idxCheck = $pdo->query("SHOW INDEX FROM `attendance` WHERE Key_name = 'uniq_student_date_session'")->fetch();
+            // Tambahkan index unik untuk student_id + event_id + tap_date + session_id
+            $idxCheck = $pdo->query("SHOW INDEX FROM `attendance` WHERE Key_name = 'uniq_student_event_date_session'")->fetch();
             if (!$idxCheck) {
-                $pdo->exec("ALTER TABLE `attendance` ADD UNIQUE KEY `uniq_student_date_session` (`student_id`, `tap_date`, `session_id`)");
+                $pdo->exec("ALTER TABLE `attendance` ADD UNIQUE KEY `uniq_student_event_date_session` (`student_id`, `event_id`, `tap_date`, `session_id`)");
             }
         } catch (Exception $e) {
             // Kolom atau index mungkin sudah ada
@@ -279,8 +281,8 @@ function checkApiAuth() {
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
     if (in_array($method, ['POST', 'PUT', 'DELETE', 'PATCH'], true)) {
         $csrfToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_POST['csrf_token'] ?? '';
-        // Validasi ketat jika token CSRF disertakan atau jika sesi aktif
-        if (!empty($csrfToken) && !verifyCsrfToken($csrfToken)) {
+        // Validasi ketat token CSRF pada seluruh mutasi
+        if (empty($csrfToken) || !verifyCsrfToken($csrfToken)) {
             http_response_code(403);
             echo json_encode([
                 'success' => false,

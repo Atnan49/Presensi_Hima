@@ -7,9 +7,10 @@ AddDefaultCharset UTF-8
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
-    # Enforce HTTPS if SSL is available
+    # Enforce HTTPS if SSL is available (exempt /api/ for ESP8266 HTTP compatibility)
     RewriteCond %{HTTPS} off
     RewriteCond %{HTTP:X-Forwarded-Proto} !https
+    RewriteCond %{REQUEST_URI} !^.*/api/.*$ [NC]
     RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
     # Block direct access to hidden files and directories

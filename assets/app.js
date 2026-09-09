@@ -112,8 +112,19 @@ function showPanel(name) {
   document.querySelectorAll('.panel, .panel-section').forEach(el => {
     el.classList.remove('active');
   });
-  const target = document.getElementById(`panel-${name}`);
-  if (target) target.classList.add('active');
+  // Update header page title & subtitle
+  const panelTitles = {
+    dashboard: ['Dashboard', 'Rekap absensi kehadiran hari ini'],
+    tambah:    ['Pendaftaran Kartu', 'Registrasi kartu RFID mahasiswa baru'],
+    mahasiswa: ['Data Mahasiswa', 'Daftar mahasiswa terdaftar di sistem'],
+    rekap:     ['Rekap Absensi', 'Laporan riwayat kehadiran mahasiswa'],
+    events:    ['Program Kerja', 'Manajemen acara dan kegiatan organisasi'],
+  };
+  const [tTitle, tSub] = panelTitles[name] || ['Presensi HIMA', 'Sistem Presensi RFID'];
+  const titleEl = document.getElementById('page-title');
+  const subEl = document.getElementById('page-subtitle');
+  if (titleEl) titleEl.textContent = tTitle;
+  if (subEl) subEl.textContent = tSub;
 
   // Load data sesuai panel yang aktif
   if (name === 'dashboard') loadDashboard();
@@ -865,7 +876,7 @@ function downloadExcel(filename, title, period, headers, rows) {
 function exportAttendanceToday(format = 'csv') {
   const today = state.selectedDate || getLocalDateString();
   const allLogs = window.cloudLogs || state.attendance || [];
-  const logsToday = allLogs.filter(l => l.date === today);
+  const logsToday = allLogs.filter(l => (l.date || l.tap_date) === today);
 
   if (logsToday.length === 0) {
     showToast(`Belum ada data presensi hari ini (${today})`, 'warning');
@@ -879,7 +890,7 @@ function exportAttendanceToday(format = 'csv') {
     r.name,
     r.nim || '-',
     formatSessionLabel(r.session_id, r.session_name),
-    r.date || today,
+    r.date || r.tap_date || today,
     r.waktu,
     'HADIR (TERCATAT)'
   ]);
@@ -897,7 +908,7 @@ function exportAttendance(format = 'csv') {
   const date = document.getElementById('rekap-date')?.value || state.selectedDate || getLocalDateString();
   const sessionFilter = document.getElementById('rekap-session-filter')?.value || '';
   const allLogs = window.cloudLogs || state.attendance || [];
-  let logsFiltered = allLogs.filter(l => l.date === date);
+  let logsFiltered = allLogs.filter(l => (l.date || l.tap_date) === date);
   if (sessionFilter) {
     logsFiltered = logsFiltered.filter(l => (l.session_id || 'sesi_1') === sessionFilter);
   }
@@ -914,7 +925,7 @@ function exportAttendance(format = 'csv') {
     r.name,
     r.nim || '-',
     formatSessionLabel(r.session_id, r.session_name),
-    r.date || date,
+    r.date || r.tap_date || date,
     r.waktu,
     'HADIR (TERCATAT)'
   ]);
@@ -944,7 +955,7 @@ function exportAllAttendance(format = 'csv') {
     r.name,
     r.nim || '-',
     formatSessionLabel(r.session_id, r.session_name),
-    r.date || '-',
+    r.date || r.tap_date || '-',
     r.waktu,
     'HADIR (TERCATAT)'
   ]);
@@ -1407,8 +1418,8 @@ async function openAlphaModal() {
     }
   });
 
-  // Cari yang belum hadir pada sesi aktif ini
-  currentAbsentStudents = allStudents.filter(s => !presentUids.has(s.uid));
+  // Cari yang belum hadir pada sesi aktif ini (hanya mahasiswa yang berstatus aktif)
+  currentAbsentStudents = allStudents.filter(s => (s.is_active === undefined || s.is_active == 1) && !presentUids.has(s.uid));
 
   if (countBadge) countBadge.textContent = `${currentAbsentStudents.length} ANGGOTA`;
 
@@ -1465,11 +1476,29 @@ function copyAlphaListToWhatsApp() {
   text += `----------------------------------------\n`;
   text += `Diharapkan segera melakukan presensi kehadiran di meja registrasi. Terima kasih.`;
 
-  navigator.clipboard.writeText(text).then(() => {
-    showToast('Daftar belum hadir disalin ke clipboard.', 'success');
-  }).catch(() => {
-    showToast('Gagal menyalin ke clipboard', 'danger');
-  });
+  const fallbackCopy = (val) => {
+    const ta = document.createElement('textarea');
+    ta.value = val;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      showToast('Daftar belum hadir disalin ke clipboard.', 'success');
+    } catch {
+      showToast('Gagal menyalin ke clipboard', 'danger');
+    }
+    document.body.removeChild(ta);
+  };
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('Daftar belum hadir disalin ke clipboard.', 'success');
+    }).catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
 }
 
 // Batch student registration import
@@ -1778,4 +1807,13 @@ document.addEventListener('DOMContentLoaded', () => {
   window.toggleAudioChime = toggleAudioChime;
   window.setQuickDate = setQuickDate;
   window.playTapChime = playTapChime;
+
+  // Antislop R-32: Keyboard accessibility (Escape key closes open modals)
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.modal-overlay.active, .modal-overlay.open').forEach(m => {
+        m.classList.remove('active', 'open');
+      });
+    }
+  });
 });
