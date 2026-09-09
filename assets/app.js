@@ -897,10 +897,10 @@ function downloadExcel(filename, title, period, headers, rows) {
           <tr style="${i % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
             ${r.map((c, colIdx) => {
               let cls = '';
-              if (colIdx === 0) cls = 'text-center';
-              else if (colIdx === 2) cls = 'txt';
-              else if (colIdx === 3 || String(c).includes('HADIR')) cls = 'badge';
-              else if (colIdx === 4 || colIdx === 5 || colIdx === 6) cls = 'text-center';
+              if (colIdx === 0) cls = 'text-center';        // No
+              else if (colIdx === 2) cls = 'txt';            // NIM
+              else if (colIdx === 3 || String(c).includes('HADIR')) cls = 'badge'; // Status Kehadiran
+              else if (colIdx === 4 || colIdx === 5 || colIdx === 6) cls = 'text-center'; // Sesi, Tanggal, Jam
               return `<td class="${cls}">${c ?? '-'}</td>`;
             }).join('')}
           </tr>
