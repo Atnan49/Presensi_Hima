@@ -2,11 +2,21 @@
 require_once 'config.php';
 checkAuth();
 $currentUser = getCurrentUser();
+$initialPanel = isset($_GET['panel']) ? trim($_GET['panel']) : 'dashboard';
+if (!in_array($initialPanel, ['dashboard', 'tambah', 'mahasiswa', 'rekap', 'events', 'proker'], true)) {
+    $initialPanel = 'dashboard';
+}
+if ($initialPanel === 'proker') {
+    $initialPanel = 'events';
+}
+$baseDir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'])), '/');
+$baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
 ?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
   <meta charset="UTF-8">
+  <base href="<?= htmlspecialchars($baseUrl) ?>">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sistem Presensi HIMATIF - RFID / ESP8266</title>
   <meta name="description" content="Dashboard Presensi Mahasiswa Berbasis RFID dan IoT ESP8266 HIMATIF UMS">
@@ -18,7 +28,7 @@ $currentUser = getCurrentUser();
   <meta name="csrf-token" content="<?= htmlspecialchars(generateCsrfToken()) ?>">
   <link rel="stylesheet" href="assets/style.css?v=<?= @filemtime(__DIR__ . '/assets/style.css') ?: time() ?>">
 </head>
-<body>
+<body data-initial-panel="<?= htmlspecialchars($initialPanel) ?>">
 
 <div class="app-wrapper">
 
@@ -77,7 +87,7 @@ $currentUser = getCurrentUser();
           <button type="button" class="btn btn-secondary btn-xs" onclick="openChangePasswordModal()" title="Ubah Password Admin">
             KUNCI
           </button>
-          <a href="logout.php" class="btn btn-danger btn-xs" title="Keluar dari sistem">
+          <a href="logout" class="btn btn-danger btn-xs" title="Keluar dari sistem">
             KELUAR
           </a>
         </div>

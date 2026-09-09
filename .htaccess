@@ -21,6 +21,19 @@ AddDefaultCharset UTF-8
 
     # Block direct access to internal project directories
     RewriteRule ^(arduino|python|sql|exports)(/|$) - [F,L]
+
+    # Do not rewrite real existing files or directories
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Pretty URL: Clean routes for web panels
+    RewriteRule ^(dashboard|rekap|mahasiswa|tambah|events|proker)/?$ index.php?panel=$1 [L,QSA]
+
+    # Pretty URL: Extensionless PHP files (e.g. /login -> login.php, /api/events -> api/events.php)
+    RewriteCond %{DOCUMENT_ROOT}%{REQUEST_URI}.php -f [OR]
+    RewriteCond %{REQUEST_FILENAME}.php -f
+    RewriteRule ^(.*)$ $1.php [L,QSA]
 </IfModule>
 
 # Protect config files from direct web requests

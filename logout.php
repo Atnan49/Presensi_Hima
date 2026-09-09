@@ -1,7 +1,5 @@
 <?php
-// ============================================
-// logout.php - Logout Sesi Admin
-// ============================================
+// Logout sesi administrator presensi
 
 require_once 'config.php';
 startSessionSafe();
@@ -22,5 +20,6 @@ if (ini_get("session.use_cookies")) {
 }
 session_destroy();
 
-header('Location: login.php?msg=logged_out');
+header('Location: login?msg=logged_out');
+exit;
 exit;

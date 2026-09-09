@@ -270,7 +270,7 @@ function getCurrentUser() {
 // Guard untuk halaman web (index.php)
 function checkAuth() {
     if (!isLoggedIn()) {
-        header('Location: login.php');
+        header('Location: login');
         exit;
     }
 }

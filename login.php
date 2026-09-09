@@ -6,7 +6,7 @@ startSessionSafe();
 
 // Jika sudah login, langsung ke dashboard
 if (isLoggedIn()) {
-    header('Location: index.php');
+    header('Location: dashboard');
     exit;
 }
 
@@ -44,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'username' => $admin['username'],
                             'name'     => $admin['name']
                         ];
-                        header('Location: index.php');
+                        header('Location: dashboard');
                         exit;
                     } else {
                         // Rate limiting percobaan login
@@ -197,7 +197,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </div>
     <?php endif; ?>
 
-    <form method="POST" action="login.php">
+    <form method="POST" action="login">
       <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCsrfToken()) ?>">
 
       <div class="form-group">

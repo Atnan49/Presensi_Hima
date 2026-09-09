@@ -130,7 +130,7 @@ const API = {
 };
 
 // Navigation and panel switching
-function showPanel(name) {
+function showPanel(name, updateHistory = true) {
   if (!name || typeof name !== 'string') {
     name = 'dashboard';
   }
@@ -156,6 +156,15 @@ function showPanel(name) {
   if (targetPanel) {
     targetPanel.classList.add('active');
   }
+
+  // Update browser history untuk Clean / Pretty URL
+  if (updateHistory && window.history && window.history.pushState) {
+    const currentPath = window.location.pathname.replace(/\/+$/, '').split('/').pop();
+    if (currentPath !== name) {
+      window.history.pushState({ panel: name }, '', name);
+    }
+  }
+
   // Update header page title & subtitle
   const panelTitles = {
     dashboard: ['Dashboard', 'Rekap absensi kehadiran hari ini'],
@@ -1063,7 +1072,7 @@ function showToast(msg, type = 'info') {
   const closeBtn = document.createElement('button');
   closeBtn.className = 'toast-close';
   closeBtn.style.cssText = 'background:transparent;border:none;cursor:pointer;font-weight:bold;margin-left:auto;padding:0 4px;font-family:monospace;font-size:13px;';
-  closeBtn.textContent = '✕';
+  closeBtn.textContent = 'X';
   closeBtn.onclick = () => toast.remove();
 
   toast.appendChild(labelSpan);
@@ -1316,7 +1325,7 @@ function renderEventsTable(events) {
       </td>
       <td class="font-mono text-sm">
         <div>${formatDate(ev.event_date)}</div>
-        ${timeStr ? `<div class="text-xs font-mono font-bold mt-1" style="color: var(--text-secondary);">⏰ ${timeStr}</div>` : ''}
+        ${timeStr ? `<div class="text-xs font-mono font-bold mt-1" style="color: var(--text-secondary);"><span class="badge badge-outline" style="font-size: 10px; padding: 1px 5px; margin-right: 4px;">WAKTU</span>${timeStr}</div>` : ''}
       </td>
       <td class="font-mono font-bold"><span class="badge badge-outline">${ev.total_hadir || 0} Mahasiswa</span></td>
       <td>
@@ -1835,9 +1844,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const rekapDate = document.getElementById('rekap-date');
   if (rekapDate) rekapDate.value = state.selectedDate;
 
-  // Load acara aktif & dashboard
+  // Load acara aktif & initial panel
   loadEvents();
-  showPanel('dashboard');
+  const initialPanel = document.body.dataset.initialPanel || 'dashboard';
+  showPanel(initialPanel, false);
+
+  // Listener popstate browser (tombol back / forward untuk Clean URL)
+  window.addEventListener('popstate', (e) => {
+    const p = (e.state && e.state.panel)
+      ? e.state.panel
+      : (window.location.pathname.replace(/\/+$/, '').split('/').pop() || 'dashboard');
+    const validPanels = ['dashboard', 'tambah', 'mahasiswa', 'rekap', 'events'];
+    showPanel(validPanels.includes(p) ? p : 'dashboard', false);
+  });
 
   // Polling auto-refresh
   startPolling();
