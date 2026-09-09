@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS `events` (
   `name` VARCHAR(150) NOT NULL COMMENT 'Nama acara atau program kerja',
   `description` TEXT DEFAULT NULL COMMENT 'Keterangan acara',
   `event_date` DATE NOT NULL COMMENT 'Tanggal pelaksanaan',
+  `start_time` TIME NULL DEFAULT '08:00:00' COMMENT 'Jam mulai acara (WIB)',
+  `end_time` TIME NULL DEFAULT NULL COMMENT 'Jam selesai acara (WIB)',
   `is_active` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=sedang berlangsung, 0=nonaktif',
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)

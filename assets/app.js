@@ -1255,20 +1255,34 @@ async function loadEvents() {
   }
 }
 
+function formatEventTime(startTime, endTime) {
+  if (!startTime) return '';
+  const start = startTime.substring(0, 5);
+  if (endTime) {
+    const end = endTime.substring(0, 5);
+    return `${start} - ${end} WIB`;
+  }
+  return `${start} WIB`;
+}
+
 function updateActiveEventDisplay(eventData) {
   const ev = eventData || state.activeEvent;
   const badgeEl = document.getElementById('active-event-badge');
   const titleEl = document.getElementById('active-event-title');
   const dateEl  = document.getElementById('active-event-date');
 
-  if (ev && ev.name && ev.is_active == 1) {
+  if (ev && ev.name && (ev.is_active == 1 || ev.is_active === undefined)) {
     if (badgeEl) {
       badgeEl.style.display = 'inline-flex';
       badgeEl.style.background = 'var(--color-yellow)';
       badgeEl.style.color = '#000000';
     }
     if (titleEl) titleEl.textContent = ev.name;
-    if (dateEl)  dateEl.textContent = ev.event_date ? formatDate(ev.event_date) : '';
+    if (dateEl) {
+      const dateText = ev.event_date || ev.date ? formatDate(ev.event_date || ev.date) : '';
+      const timeText = formatEventTime(ev.start_time, ev.end_time);
+      dateEl.textContent = [dateText, timeText].filter(Boolean).join(' • ');
+    }
   } else {
     if (badgeEl) {
       badgeEl.style.display = 'inline-flex';
@@ -1299,6 +1313,7 @@ function renderEventsTable(events) {
 
   tbody.innerHTML = events.map((ev, i) => {
     const isActive = ev.is_active == 1;
+    const timeStr = formatEventTime(ev.start_time, ev.end_time);
     return `
     <tr class="${isActive ? 'row-active-event' : ''}">
       <td class="font-mono font-bold">${i + 1}</td>
@@ -1307,7 +1322,10 @@ function renderEventsTable(events) {
         ${isActive ? '<span class="badge badge-warning ml-2 font-mono">[SEDANG BERJALAN]</span>' : ''}
         ${ev.description ? `<div class="text-xs text-muted mt-1 font-mono">${escapeHtml(ev.description)}</div>` : ''}
       </td>
-      <td class="font-mono text-sm">${formatDate(ev.event_date)}</td>
+      <td class="font-mono text-sm">
+        <div>${formatDate(ev.event_date)}</div>
+        ${timeStr ? `<div class="text-xs font-mono font-bold mt-1" style="color: var(--text-secondary);">⏰ ${timeStr}</div>` : ''}
+      </td>
       <td class="font-mono font-bold"><span class="badge badge-outline">${ev.total_hadir || 0} Mahasiswa</span></td>
       <td>
         <span class="badge ${isActive ? 'badge-success' : 'badge-secondary'} font-mono">
@@ -1339,6 +1357,10 @@ function openCreateEventModal() {
   const modal = document.getElementById('modal-create-event');
   const dateInput = document.getElementById('event-date');
   if (dateInput) dateInput.value = getLocalDateString();
+  const startTimeInput = document.getElementById('event-start-time');
+  if (startTimeInput) startTimeInput.value = '08:00';
+  const endTimeInput = document.getElementById('event-end-time');
+  if (endTimeInput) endTimeInput.value = '';
   document.getElementById('event-name').value = '';
   document.getElementById('event-desc').value = '';
   if (modal) modal.classList.add('active', 'open');
@@ -1353,6 +1375,8 @@ async function submitCreateEvent() {
   const name        = document.getElementById('event-name')?.value.trim();
   const description = document.getElementById('event-desc')?.value.trim();
   const event_date  = document.getElementById('event-date')?.value || getLocalDateString();
+  const start_time  = document.getElementById('event-start-time')?.value || '08:00';
+  const end_time    = document.getElementById('event-end-time')?.value || null;
   const is_active   = document.getElementById('event-active')?.checked ? 1 : 0;
 
   if (!name) {
@@ -1364,7 +1388,7 @@ async function submitCreateEvent() {
     const res = await fetch(API.events, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, description, event_date, is_active })
+      body: JSON.stringify({ name, description, event_date, start_time, end_time, is_active })
     });
     const data = await res.json();
     if (data.success) {
@@ -1373,7 +1397,15 @@ async function submitCreateEvent() {
 
       // Jika diset aktif, sinkronkan ke Firebase Realtime Database
       if (is_active && typeof window.setActiveEventInFirebase === 'function') {
-        window.setActiveEventInFirebase({ id: data.id, name, date: event_date });
+        window.setActiveEventInFirebase({
+          id: data.id,
+          name,
+          event_date,
+          date: event_date,
+          start_time,
+          end_time,
+          is_active: 1
+        });
       }
 
       loadEvents();
@@ -1404,7 +1436,11 @@ async function toggleEventActive(id, activate) {
           window.setActiveEventInFirebase({
             id: targetEv.id,
             name: targetEv.name,
-            date: targetEv.event_date
+            event_date: targetEv.event_date,
+            date: targetEv.event_date,
+            start_time: targetEv.start_time,
+            end_time: targetEv.end_time,
+            is_active: 1
           });
         } else {
           window.setActiveEventInFirebase(null);

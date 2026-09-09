@@ -428,7 +428,7 @@ $currentUser = getCurrentUser();
               <tr>
                 <th>No</th>
                 <th>Nama Program Kerja / Acara</th>
-                <th>Tanggal Pelaksanaan</th>
+                <th>Waktu Pelaksanaan</th>
                 <th>Total Hadir</th>
                 <th>Status</th>
                 <th>Aksi</th>
@@ -522,6 +522,17 @@ $currentUser = getCurrentUser();
     <div class="form-group">
       <label class="form-label">Tanggal Pelaksanaan</label>
       <input type="date" id="event-date">
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+      <div class="form-group">
+        <label class="form-label">Jam Mulai (WIB) *</label>
+        <input type="time" id="event-start-time" value="08:00" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Jam Selesai (WIB)</label>
+        <input type="time" id="event-end-time" placeholder="Opsional">
+      </div>
     </div>
 
     <div class="form-group">

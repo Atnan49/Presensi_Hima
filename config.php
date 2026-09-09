@@ -170,6 +170,8 @@ function ensureDatabaseTables($pdo) {
               `name` VARCHAR(150) NOT NULL,
               `description` TEXT DEFAULT NULL,
               `event_date` DATE NOT NULL,
+              `start_time` TIME NULL DEFAULT '08:00:00',
+              `end_time` TIME NULL DEFAULT NULL,
               `is_active` TINYINT(1) NOT NULL DEFAULT 0,
               `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
               PRIMARY KEY (`id`)
@@ -193,6 +195,12 @@ function ensureDatabaseTables($pdo) {
             $idxCheck = $pdo->query("SHOW INDEX FROM `attendance` WHERE Key_name = 'uniq_student_event_date_session'")->fetch();
             if (!$idxCheck) {
                 $pdo->exec("ALTER TABLE `attendance` ADD UNIQUE KEY `uniq_student_event_date_session` (`student_id`, `event_id`, `tap_date`, `session_id`)");
+            }
+
+            // Migration: tambahkan start_time & end_time ke events jika belum ada
+            $colEventTime = $pdo->query("SHOW COLUMNS FROM `events` LIKE 'start_time'")->fetch();
+            if (!$colEventTime) {
+                $pdo->exec("ALTER TABLE `events` ADD COLUMN `start_time` TIME NULL DEFAULT '08:00:00' AFTER `event_date`, ADD COLUMN `end_time` TIME NULL DEFAULT NULL AFTER `start_time`");
             }
         } catch (Exception $e) {
             // Kolom atau index mungkin sudah ada
