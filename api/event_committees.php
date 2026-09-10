@@ -14,25 +14,43 @@ if ($method === 'GET') {
         sendJSON(['success' => false, 'message' => 'event_id wajib disertakan'], 400);
     }
 
-    $stmt = $db->prepare("
-        SELECT ec.id, ec.event_id, ec.student_id, ec.role, ec.division AS committee_division, ec.created_at,
-               s.name, s.nim, s.uid, s.category, s.division AS student_division, s.position AS student_position
-        FROM event_committees ec
-        JOIN students s ON s.id = ec.student_id
-        WHERE ec.event_id = ?
-        ORDER BY 
-          CASE 
-            WHEN ec.role LIKE '%Ketua Panitia%' THEN 1
-            WHEN ec.role LIKE '%Wakil%' THEN 2
-            WHEN ec.role LIKE '%Sekretaris%' THEN 3
-            WHEN ec.role LIKE '%Bendahara%' THEN 4
-            WHEN ec.role LIKE '%Steering%' OR ec.role LIKE '%SC%' THEN 5
-            WHEN ec.role LIKE '%Koordinator%' OR ec.role LIKE '%Koor%' THEN 6
-            ELSE 7
-          END ASC, ec.role ASC, s.name ASC
-    ");
-    $stmt->execute([$eventId]);
-    $committees = $stmt->fetchAll();
+    $committees = [];
+    try {
+        $stmt = $db->prepare("
+            SELECT ec.id, ec.event_id, ec.student_id, ec.role, ec.division AS committee_division, ec.created_at,
+                   s.name, s.nim, s.uid, s.category, s.division AS student_division, s.position AS student_position
+            FROM event_committees ec
+            JOIN students s ON s.id = ec.student_id
+            WHERE ec.event_id = ?
+            ORDER BY 
+              CASE 
+                WHEN ec.role LIKE '%Ketua Panitia%' THEN 1
+                WHEN ec.role LIKE '%Wakil%' THEN 2
+                WHEN ec.role LIKE '%Sekretaris%' THEN 3
+                WHEN ec.role LIKE '%Bendahara%' THEN 4
+                WHEN ec.role LIKE '%Steering%' OR ec.role LIKE '%SC%' THEN 5
+                WHEN ec.role LIKE '%Koordinator%' OR ec.role LIKE '%Koor%' THEN 6
+                ELSE 7
+              END ASC, ec.role ASC, s.name ASC
+        ");
+        $stmt->execute([$eventId]);
+        $committees = $stmt->fetchAll();
+    } catch (\Throwable $e) {
+        try {
+            ensureDatabaseTables($db);
+            $stmt = $db->prepare("
+                SELECT ec.id, ec.event_id, ec.student_id, ec.role, ec.division AS committee_division, ec.created_at,
+                       s.name, s.nim, s.uid, s.category, s.division AS student_division, s.position AS student_position
+                FROM event_committees ec
+                JOIN students s ON s.id = ec.student_id
+                WHERE ec.event_id = ?
+            ");
+            $stmt->execute([$eventId]);
+            $committees = $stmt->fetchAll();
+        } catch (\Throwable $e2) {
+            $committees = [];
+        }
+    }
 
     sendJSON([
         'success'  => true,
@@ -71,13 +89,23 @@ if ($method === 'POST') {
         sendJSON(['success' => false, 'message' => 'Mahasiswa tidak ditemukan atau student_id tidak valid'], 400);
     }
 
-    // Upsert ke event_committees
-    $stmt = $db->prepare("
-        INSERT INTO event_committees (event_id, student_id, role, division)
-        VALUES (?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE role = VALUES(role), division = VALUES(division)
-    ");
-    $stmt->execute([$eventId, $studentId, $role, $division]);
+    try {
+        $stmt = $db->prepare("
+            INSERT INTO event_committees (event_id, student_id, role, division)
+            VALUES (?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE role = VALUES(role), division = VALUES(division)
+        ");
+        $stmt->execute([$eventId, $studentId, $role, $division]);
+    } catch (\Throwable $e) {
+        ensureDatabaseTables($db);
+        $stmt = $db->prepare("
+            INSERT INTO event_committees (event_id, student_id, role, division)
+            VALUES (?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE role = VALUES(role), division = VALUES(division)
+        ");
+        $stmt->execute([$eventId, $studentId, $role, $division]);
+    }
+
     $id = (int)$db->lastInsertId();
 
     sendJSON([
@@ -94,14 +122,18 @@ if ($method === 'DELETE') {
     $eventId   = (int)($_GET['event_id'] ?? 0);
     $studentId = (int)($_GET['student_id'] ?? 0);
 
-    if ($id > 0) {
-        $stmt = $db->prepare("DELETE FROM event_committees WHERE id = ?");
-        $stmt->execute([$id]);
-    } else if ($eventId > 0 && $studentId > 0) {
-        $stmt = $db->prepare("DELETE FROM event_committees WHERE event_id = ? AND student_id = ?");
-        $stmt->execute([$eventId, $studentId]);
-    } else {
-        sendJSON(['success' => false, 'message' => 'ID panitia atau (event_id & student_id) wajib disertakan'], 400);
+    try {
+        if ($id > 0) {
+            $stmt = $db->prepare("DELETE FROM event_committees WHERE id = ?");
+            $stmt->execute([$id]);
+        } else if ($eventId > 0 && $studentId > 0) {
+            $stmt = $db->prepare("DELETE FROM event_committees WHERE event_id = ? AND student_id = ?");
+            $stmt->execute([$eventId, $studentId]);
+        } else {
+            sendJSON(['success' => false, 'message' => 'ID panitia atau (event_id & student_id) wajib disertakan'], 400);
+        }
+    } catch (\Throwable $e) {
+        ensureDatabaseTables($db);
     }
 
     sendJSON(['success' => true, 'message' => 'Panitia berhasil dihapus dari acara']);

@@ -37,9 +37,28 @@ if ($method === 'GET') {
             ELSE 3
         END ASC, s.division ASC, s.name ASC";
 
-    $stmt = $db->prepare($sql);
-    $stmt->execute($params);
-    $students = $stmt->fetchAll();
+    try {
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $students = $stmt->fetchAll();
+    } catch (\Throwable $e) {
+        try {
+            ensureDatabaseTables($db);
+            $stmt = $db->prepare($sql);
+            $stmt->execute($params);
+            $students = $stmt->fetchAll();
+        } catch (\Throwable $e2) {
+            $stmt = $db->prepare("
+                SELECT s.id, s.uid, s.name, s.nim, 'Anggota' AS category, '' AS division, '' AS position, s.is_active, s.created_at,
+                       (SELECT COUNT(*) FROM attendance WHERE student_id = s.id) AS total_hadir
+                FROM students s
+                WHERE (s.name LIKE ? OR s.nim LIKE ? OR s.uid LIKE ?)
+                ORDER BY s.name ASC
+            ");
+            $stmt->execute([$search, $search, $search]);
+            $students = $stmt->fetchAll();
+        }
+    }
     sendJSON(['success' => true, 'data' => $students]);
 }
 

@@ -63,9 +63,19 @@ function getDB() {
             ]);
             // Synchronize MySQL timezone with Asia/Jakarta (UTC+7)
             $pdo->exec("SET time_zone = '+07:00'");
-            // ponytail: schema initialized via hostinger_import.sql, run ensureDatabaseTables only on explicit init flag
-            if (!empty($_GET['init_tables'])) {
-                ensureDatabaseTables($pdo);
+
+            // Auto-migrasi skema secara aman jika ada tabel/kolom baru yang belum ada di server live
+            static $tablesChecked = false;
+            if (!$tablesChecked) {
+                $tablesChecked = true;
+                try {
+                    $chk = $pdo->query("SHOW TABLES LIKE 'event_committees'")->fetch();
+                    if (!$chk || !empty($_GET['init_tables'])) {
+                        ensureDatabaseTables($pdo);
+                    }
+                } catch (\Throwable $eChk) {
+                    // Abaikan error pengecekan
+                }
             }
         } catch (PDOException $e) {
             // Jika access denied pada localhost (misal .env berisi kredensial Hostinger saat run lokal)
@@ -201,37 +211,57 @@ function ensureDatabaseTables($pdo) {
                 $pdo->exec("ALTER TABLE `attendance` ADD COLUMN `event_id` INT(11) NULL DEFAULT NULL AFTER `student_id`");
                 $pdo->exec("ALTER TABLE `attendance` ADD KEY `idx_event_id` (`event_id`)");
             }
+        } catch (\Throwable $e) {}
+
+        try {
             $colSess = $pdo->query("SHOW COLUMNS FROM `attendance` LIKE 'session_id'")->fetch();
             if (!$colSess) {
                 $pdo->exec("ALTER TABLE `attendance` ADD COLUMN `session_id` VARCHAR(30) DEFAULT 'sesi_1' AFTER `event_id`");
                 $pdo->exec("ALTER TABLE `attendance` ADD COLUMN `session_name` VARCHAR(60) DEFAULT 'Sesi 1 (Datang)' AFTER `session_id`");
                 $pdo->exec("ALTER TABLE `attendance` ADD KEY `idx_session_id` (`session_id`)");
             }
-            // Tambahkan index unik untuk student_id + event_id + tap_date + session_id
+        } catch (\Throwable $e) {}
+
+        try {
+            $colTelat = $pdo->query("SHOW COLUMNS FROM `attendance` LIKE 'telat'")->fetch();
+            if (!$colTelat) {
+                $pdo->exec("ALTER TABLE `attendance` ADD COLUMN `telat` TINYINT(1) NOT NULL DEFAULT 0 AFTER `session_name`");
+            }
+        } catch (\Throwable $e) {}
+
+        try {
             $idxCheck = $pdo->query("SHOW INDEX FROM `attendance` WHERE Key_name = 'uniq_student_event_date_session'")->fetch();
             if (!$idxCheck) {
                 $pdo->exec("ALTER TABLE `attendance` ADD UNIQUE KEY `uniq_student_event_date_session` (`student_id`, `event_id`, `tap_date`, `session_id`)");
             }
+        } catch (\Throwable $e) {}
 
-            // Migration: tambahkan start_time & end_time ke events jika belum ada
+        // Migration: tambahkan start_time & end_time ke events jika belum ada
+        try {
             $colEventTime = $pdo->query("SHOW COLUMNS FROM `events` LIKE 'start_time'")->fetch();
             if (!$colEventTime) {
                 $pdo->exec("ALTER TABLE `events` ADD COLUMN `start_time` TIME NULL DEFAULT '08:00:00' AFTER `event_date`, ADD COLUMN `end_time` TIME NULL DEFAULT NULL AFTER `start_time`");
             }
+        } catch (\Throwable $e) {}
 
-            // Migration: tambahkan target_audience ke events jika belum ada
+        // Migration: tambahkan target_audience ke events jika belum ada
+        try {
             $colEventTarget = $pdo->query("SHOW COLUMNS FROM `events` LIKE 'target_audience'")->fetch();
             if (!$colEventTarget) {
                 $pdo->exec("ALTER TABLE `events` ADD COLUMN `target_audience` ENUM('all', 'committee_only', 'bpi_bph') NOT NULL DEFAULT 'all' AFTER `end_time`");
             }
+        } catch (\Throwable $e) {}
 
-            // Migration: tambahkan category, division, position ke students jika belum ada
+        // Migration: tambahkan category, division, position ke students jika belum ada
+        try {
             $colCategory = $pdo->query("SHOW COLUMNS FROM `students` LIKE 'category'")->fetch();
             if (!$colCategory) {
                 $pdo->exec("ALTER TABLE `students` ADD COLUMN `category` ENUM('BPI', 'BPH', 'Anggota') NOT NULL DEFAULT 'Anggota' AFTER `nim`, ADD COLUMN `division` VARCHAR(100) NULL DEFAULT NULL AFTER `category`, ADD COLUMN `position` VARCHAR(100) NULL DEFAULT NULL AFTER `division`, ADD KEY `idx_category` (`category`), ADD KEY `idx_division` (`division`)");
             }
+        } catch (\Throwable $e) {}
 
-            // Migration: buat tabel event_committees jika belum ada
+        // Migration: buat tabel event_committees jika belum ada (tanpa foreign key ketat agar kompatibel di semua versi MySQL)
+        try {
             $pdo->exec("
                 CREATE TABLE IF NOT EXISTS `event_committees` (
                   `id` INT(11) NOT NULL AUTO_INCREMENT,
@@ -243,14 +273,10 @@ function ensureDatabaseTables($pdo) {
                   PRIMARY KEY (`id`),
                   UNIQUE KEY `uniq_event_student` (`event_id`, `student_id`),
                   KEY `idx_event_comm` (`event_id`),
-                  KEY `idx_student_comm` (`student_id`),
-                  CONSTRAINT `fk_comm_event` FOREIGN KEY (`event_id`) REFERENCES `events` (`id`) ON DELETE CASCADE,
-                  CONSTRAINT `fk_comm_student` FOREIGN KEY (`student_id`) REFERENCES `students` (`id`) ON DELETE CASCADE
+                  KEY `idx_student_comm` (`student_id`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             ");
-        } catch (Exception $e) {
-            // Kolom atau index mungkin sudah ada
-        }
+        } catch (\Throwable $e) {}
 
         // Inisialisasi admin & event default HANYA jika database baru di-setup (admins kosong)
         $count = $pdo->query("SELECT COUNT(*) FROM `admins`")->fetchColumn();

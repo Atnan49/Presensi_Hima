@@ -15,90 +15,121 @@ if ($method === 'GET') {
     $sessionId = trim($_GET['session_id'] ?? '');
     $all       = isset($_GET['all'])        && $_GET['all'] === '1';
 
-    // Jika diminta berdasarkan event_id tertentu
-    if ($eventId > 0) {
-        $sql = "
-            SELECT a.id, a.uid, s.name, s.nim,
-                   DATE_FORMAT(a.tap_time, '%d/%m/%Y %H:%i:%s') AS waktu,
-                   a.tap_date, a.event_id,
-                   COALESCE(a.session_id, 'sesi_1') AS session_id,
-                   COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
-                   COALESCE(e.name, 'Acara') AS event_name
-            FROM attendance a
-            JOIN students s ON s.id = a.student_id
-            LEFT JOIN events e ON e.id = a.event_id
-            WHERE a.event_id = ?
-        ";
-        $params = [$eventId];
-        if (!empty($sessionId)) {
-            $sql .= " AND a.session_id = ?";
-            $params[] = $sessionId;
+    $records = [];
+    try {
+        // Jika diminta berdasarkan event_id tertentu
+        if ($eventId > 0) {
+            $sql = "
+                SELECT a.id, a.uid, s.name, s.nim,
+                       DATE_FORMAT(a.tap_time, '%d/%m/%Y %H:%i:%s') AS waktu,
+                       a.tap_date, a.event_id,
+                       COALESCE(a.session_id, 'sesi_1') AS session_id,
+                       COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
+                       COALESCE(a.telat, 0) AS telat,
+                       COALESCE(e.name, 'Acara') AS event_name
+                FROM attendance a
+                JOIN students s ON s.id = a.student_id
+                LEFT JOIN events e ON e.id = a.event_id
+                WHERE a.event_id = ?
+            ";
+            $params = [$eventId];
+            if (!empty($sessionId)) {
+                $sql .= " AND a.session_id = ?";
+                $params[] = $sessionId;
+            }
+            $sql .= " ORDER BY a.tap_time DESC";
+            $stmt = $db->prepare($sql);
+            $stmt->execute($params);
+        } elseif ($all) {
+            // Semua rekap
+            $sql = "
+                SELECT a.id, a.uid, s.name, s.nim,
+                       DATE_FORMAT(a.tap_time, '%d/%m/%Y %H:%i:%s') AS waktu,
+                       a.tap_date, a.event_id,
+                       COALESCE(a.session_id, 'sesi_1') AS session_id,
+                       COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
+                       COALESCE(a.telat, 0) AS telat,
+                       COALESCE(e.name, 'Kegiatan HIMA Umum') AS event_name
+                FROM attendance a
+                JOIN students s ON s.id = a.student_id
+                LEFT JOIN events e ON e.id = a.event_id
+            ";
+            $params = [];
+            if (!empty($sessionId)) {
+                $sql .= " WHERE a.session_id = ?";
+                $params[] = $sessionId;
+            }
+            $sql .= " ORDER BY a.tap_time DESC LIMIT 500";
+            $stmt = $db->prepare($sql);
+            $stmt->execute($params);
+        } elseif ($studentId > 0) {
+            // Rekap per mahasiswa
+            $stmt = $db->prepare("
+                SELECT a.id, a.uid, s.name, s.nim,
+                       DATE_FORMAT(a.tap_time, '%d/%m/%Y %H:%i:%s') AS waktu,
+                       a.tap_date, a.event_id,
+                       COALESCE(a.session_id, 'sesi_1') AS session_id,
+                       COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
+                       COALESCE(a.telat, 0) AS telat,
+                       COALESCE(e.name, 'Kegiatan HIMA Umum') AS event_name
+                FROM attendance a
+                JOIN students s ON s.id = a.student_id
+                LEFT JOIN events e ON e.id = a.event_id
+                WHERE a.student_id = ?
+                ORDER BY a.tap_time DESC
+            ");
+            $stmt->execute([$studentId]);
+        } else {
+            // Rekap per tanggal (default: hari ini)
+            $sql = "
+                SELECT a.id, a.uid, s.name, s.nim,
+                       DATE_FORMAT(a.tap_time, '%d/%m/%Y %H:%i:%s') AS waktu,
+                       a.tap_date, a.event_id,
+                       COALESCE(a.session_id, 'sesi_1') AS session_id,
+                       COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
+                       COALESCE(a.telat, 0) AS telat,
+                       COALESCE(e.name, 'Kegiatan HIMA Umum') AS event_name
+                FROM attendance a
+                JOIN students s ON s.id = a.student_id
+                LEFT JOIN events e ON e.id = a.event_id
+                WHERE a.tap_date = ?
+            ";
+            $params = [$date];
+            if (!empty($sessionId)) {
+                $sql .= " AND a.session_id = ?";
+                $params[] = $sessionId;
+            }
+            $sql .= " ORDER BY a.tap_time ASC";
+            $stmt = $db->prepare($sql);
+            $stmt->execute($params);
         }
-        $sql .= " ORDER BY a.tap_time DESC";
-        $stmt = $db->prepare($sql);
-        $stmt->execute($params);
-    } elseif ($all) {
-        // Semua rekap
-        $sql = "
-            SELECT a.id, a.uid, s.name, s.nim,
-                   DATE_FORMAT(a.tap_time, '%d/%m/%Y %H:%i:%s') AS waktu,
-                   a.tap_date, a.event_id,
-                   COALESCE(a.session_id, 'sesi_1') AS session_id,
-                   COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
-                   COALESCE(e.name, 'Kegiatan HIMA Umum') AS event_name
-            FROM attendance a
-            JOIN students s ON s.id = a.student_id
-            LEFT JOIN events e ON e.id = a.event_id
-        ";
-        $params = [];
-        if (!empty($sessionId)) {
-            $sql .= " WHERE a.session_id = ?";
-            $params[] = $sessionId;
+        $records = $stmt->fetchAll();
+    } catch (\Throwable $e) {
+        // Fallback jika kolom telat belum termigrasi
+        try {
+            ensureDatabaseTables($db);
+            // Fallback query tanpa a.telat
+            $sqlFallback = "
+                SELECT a.id, a.uid, s.name, s.nim,
+                       DATE_FORMAT(a.tap_time, '%d/%m/%Y %H:%i:%s') AS waktu,
+                       a.tap_date, a.event_id,
+                       COALESCE(a.session_id, 'sesi_1') AS session_id,
+                       COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
+                       0 AS telat,
+                       COALESCE(e.name, 'Kegiatan HIMA Umum') AS event_name
+                FROM attendance a
+                JOIN students s ON s.id = a.student_id
+                LEFT JOIN events e ON e.id = a.event_id
+                WHERE a.tap_date = ?
+                ORDER BY a.tap_time ASC
+            ";
+            $stmt = $db->prepare($sqlFallback);
+            $stmt->execute([$date]);
+            $records = $stmt->fetchAll();
+        } catch (\Throwable $e2) {
+            $records = [];
         }
-        $sql .= " ORDER BY a.tap_time DESC LIMIT 500";
-        $stmt = $db->prepare($sql);
-        $stmt->execute($params);
-    } elseif ($studentId > 0) {
-        // Rekap per mahasiswa
-        $stmt = $db->prepare("
-            SELECT a.id, a.uid, s.name, s.nim,
-                   DATE_FORMAT(a.tap_time, '%d/%m/%Y %H:%i:%s') AS waktu,
-                   a.tap_date, a.event_id,
-                   COALESCE(a.session_id, 'sesi_1') AS session_id,
-                   COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
-                   COALESCE(e.name, 'Kegiatan HIMA Umum') AS event_name
-            FROM attendance a
-            JOIN students s ON s.id = a.student_id
-            LEFT JOIN events e ON e.id = a.event_id
-            WHERE a.student_id = ?
-            ORDER BY a.tap_time DESC
-        ");
-        $stmt->execute([$studentId]);
-    } else {
-        // Rekap per tanggal (default: hari ini)
-        $sql = "
-            SELECT a.id, a.uid, s.name, s.nim,
-                   DATE_FORMAT(a.tap_time, '%d/%m/%Y %H:%i:%s') AS waktu,
-                   a.tap_date, a.event_id,
-                   COALESCE(a.session_id, 'sesi_1') AS session_id,
-                   COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
-                   COALESCE(e.name, 'Kegiatan HIMA Umum') AS event_name
-            FROM attendance a
-            JOIN students s ON s.id = a.student_id
-            LEFT JOIN events e ON e.id = a.event_id
-            WHERE a.tap_date = ?
-        ";
-        $params = [$date];
-        if (!empty($sessionId)) {
-            $sql .= " AND a.session_id = ?";
-            $params[] = $sessionId;
-        }
-        $sql .= " ORDER BY a.tap_time ASC";
-        $stmt = $db->prepare($sql);
-        $stmt->execute($params);
     }
-
-    $records = $stmt->fetchAll();
 
     // Hitung statistik dengan hadir unik (distinct student UID)
     $totalMhs = (int)$db->query("SELECT COUNT(*) FROM students WHERE is_active = 1")->fetchColumn();

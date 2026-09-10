@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS `attendance` (
   `event_id` INT(11) DEFAULT NULL COMMENT 'FK ke events.id',
   `session_id` VARCHAR(30) NOT NULL DEFAULT 'sesi_1' COMMENT 'ID sesi (sesi_1, sesi_2, dst)',
   `session_name` VARCHAR(60) NOT NULL DEFAULT 'Sesi 1 (Datang)' COMMENT 'Label sesi presensi',
+  `telat` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '0=tepat waktu, 1=telat',
   `uid` VARCHAR(50) NOT NULL COMMENT 'UID kartu (redundan untuk kemudahan)',
   `tap_time` DATETIME NOT NULL COMMENT 'Waktu tap kartu',
   `tap_date` DATE NOT NULL COMMENT 'Tanggal tap (untuk query harian)',

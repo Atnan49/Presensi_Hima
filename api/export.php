@@ -156,11 +156,13 @@ $date      = $_GET['date'] ?? date('Y-m-d');
 $dateAll   = isset($_GET['all']) && $_GET['all'] === '1';
 $sessionId = trim($_GET['session_id'] ?? '');
 
+$rows = [];
 if ($dateAll) {
     $sql = "
         SELECT s.uid, s.name, s.nim, s.category, s.division, s.position,
                COALESCE(ec.role, '-') AS committee_role,
                COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
+               COALESCE(a.telat, 0) AS telat,
                DATE_FORMAT(a.tap_time, '%d/%m/%Y') AS tanggal,
                DATE_FORMAT(a.tap_time, '%H:%i') AS jam
         FROM attendance a
@@ -173,8 +175,38 @@ if ($dateAll) {
         $params[] = $sessionId;
     }
     $sql .= " ORDER BY a.tap_time DESC";
-    $stmt = $db->prepare($sql);
-    $stmt->execute($params);
+
+    try {
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll();
+    } catch (\Throwable $e) {
+        try {
+            ensureDatabaseTables($db);
+            $stmt = $db->prepare($sql);
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll();
+        } catch (\Throwable $e2) {
+            $fallbackSql = "
+                SELECT s.uid, s.name, s.nim, 'Anggota' AS category, '' AS division, '' AS position,
+                       '-' AS committee_role,
+                       COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
+                       0 AS telat,
+                       DATE_FORMAT(a.tap_time, '%d/%m/%Y') AS tanggal,
+                       DATE_FORMAT(a.tap_time, '%H:%i') AS jam
+                FROM attendance a
+                JOIN students s ON s.id = a.student_id
+            ";
+            if (!empty($sessionId)) {
+                $fallbackSql .= " WHERE a.session_id = ?";
+            }
+            $fallbackSql .= " ORDER BY a.tap_time DESC";
+            $stmt = $db->prepare($fallbackSql);
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll();
+        }
+    }
+
     $filenameBase = 'Rekap_Absensi_Semua_' . date('Ymd_His');
     $title        = 'REKAPITULASI KESELURUHAN PRESENSI';
     $subtitle     = 'Semua Riwayat Kehadiran Mahasiswa' . (!empty($sessionId) ? " (Filter: {$sessionId})" : '');
@@ -183,6 +215,7 @@ if ($dateAll) {
         SELECT s.uid, s.name, s.nim, s.category, s.division, s.position,
                COALESCE(ec.role, '-') AS committee_role,
                COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
+               COALESCE(a.telat, 0) AS telat,
                DATE_FORMAT(a.tap_time, '%d/%m/%Y') AS tanggal,
                DATE_FORMAT(a.tap_time, '%H:%i') AS jam
         FROM attendance a
@@ -196,14 +229,43 @@ if ($dateAll) {
         $params[] = $sessionId;
     }
     $sql .= " ORDER BY a.tap_time ASC";
-    $stmt = $db->prepare($sql);
-    $stmt->execute($params);
+
+    try {
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll();
+    } catch (\Throwable $e) {
+        try {
+            ensureDatabaseTables($db);
+            $stmt = $db->prepare($sql);
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll();
+        } catch (\Throwable $e2) {
+            $fallbackSql = "
+                SELECT s.uid, s.name, s.nim, 'Anggota' AS category, '' AS division, '' AS position,
+                       '-' AS committee_role,
+                       COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
+                       0 AS telat,
+                       DATE_FORMAT(a.tap_time, '%d/%m/%Y') AS tanggal,
+                       DATE_FORMAT(a.tap_time, '%H:%i') AS jam
+                FROM attendance a
+                JOIN students s ON s.id = a.student_id
+                WHERE a.tap_date = ?
+            ";
+            if (!empty($sessionId)) {
+                $fallbackSql .= " AND a.session_id = ?";
+            }
+            $fallbackSql .= " ORDER BY a.tap_time ASC";
+            $stmt = $db->prepare($fallbackSql);
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll();
+        }
+    }
+
     $filenameBase = 'Absensi_' . $date . (!empty($sessionId) ? "_{$sessionId}" : '');
     $title        = 'REKAPITULASI PRESENSI MAHASISWA';
     $subtitle     = 'Tanggal: ' . date('d/m/Y', strtotime($date)) . (!empty($sessionId) ? " | Sesi: {$sessionId}" : '');
 }
-
-$rows = $stmt->fetchAll();
 
 if ($format === 'csv') {
     $filename = $filenameBase . '.csv';

@@ -9,25 +9,67 @@ $method = $_SERVER['REQUEST_METHOD'];
 
 // --- GET: Ambil daftar program kerja / acara ---
 if ($method === 'GET') {
-    $stmt = $db->query("
-        SELECT e.id, e.name, e.description, e.event_date,
-               TIME_FORMAT(e.start_time, '%H:%i') AS start_time,
-               TIME_FORMAT(e.end_time, '%H:%i') AS end_time,
-               e.target_audience,
-               e.is_active, e.created_at,
-               COUNT(DISTINCT a.student_id) AS total_hadir,
-               (SELECT COUNT(*) FROM event_committees WHERE event_id = e.id) AS total_panitia
-        FROM events e
-        LEFT JOIN attendance a ON a.event_id = e.id
-        GROUP BY e.id
-        ORDER BY e.is_active DESC, e.event_date DESC, e.id DESC
-    ");
-    $events = $stmt->fetchAll();
+    $events = [];
+    try {
+        $stmt = $db->query("
+            SELECT e.id, e.name, e.description, e.event_date,
+                   TIME_FORMAT(e.start_time, '%H:%i') AS start_time,
+                   TIME_FORMAT(e.end_time, '%H:%i') AS end_time,
+                   e.target_audience,
+                   e.is_active, e.created_at,
+                   COUNT(DISTINCT a.student_id) AS total_hadir,
+                   (SELECT COUNT(*) FROM event_committees WHERE event_id = e.id) AS total_panitia
+            FROM events e
+            LEFT JOIN attendance a ON a.event_id = e.id
+            GROUP BY e.id
+            ORDER BY e.is_active DESC, e.event_date DESC, e.id DESC
+        ");
+        $events = $stmt->fetchAll();
+    } catch (\Throwable $e) {
+        // Coba auto-migrasi tabel jika tabel/kolom belum ada di server live
+        try {
+            ensureDatabaseTables($db);
+            $stmt = $db->query("
+                SELECT e.id, e.name, e.description, e.event_date,
+                       TIME_FORMAT(e.start_time, '%H:%i') AS start_time,
+                       TIME_FORMAT(e.end_time, '%H:%i') AS end_time,
+                       e.target_audience,
+                       e.is_active, e.created_at,
+                       COUNT(DISTINCT a.student_id) AS total_hadir,
+                       (SELECT COUNT(*) FROM event_committees WHERE event_id = e.id) AS total_panitia
+                FROM events e
+                LEFT JOIN attendance a ON a.event_id = e.id
+                GROUP BY e.id
+                ORDER BY e.is_active DESC, e.event_date DESC, e.id DESC
+            ");
+            $events = $stmt->fetchAll();
+        } catch (\Throwable $e2) {
+            // Fallback aman tanpa subquery event_committees dan target_audience
+            try {
+                $stmt = $db->query("
+                    SELECT e.id, e.name, e.description, e.event_date,
+                           '08:00' AS start_time,
+                           NULL AS end_time,
+                           'all' AS target_audience,
+                           e.is_active, e.created_at,
+                           COUNT(DISTINCT a.student_id) AS total_hadir,
+                           0 AS total_panitia
+                    FROM events e
+                    LEFT JOIN attendance a ON a.event_id = e.id
+                    GROUP BY e.id
+                    ORDER BY e.is_active DESC, e.event_date DESC, e.id DESC
+                ");
+                $events = $stmt->fetchAll();
+            } catch (\Throwable $e3) {
+                $events = [];
+            }
+        }
+    }
 
     // Cari acara yang sedang aktif
     $activeEvent = null;
     foreach ($events as $ev) {
-        if ($ev['is_active'] == 1) {
+        if (!empty($ev['is_active'])) {
             $activeEvent = $ev;
             break;
         }
@@ -65,8 +107,19 @@ if ($method === 'POST') {
         $db->exec("UPDATE events SET is_active = 0");
     }
 
-    $stmt = $db->prepare("INSERT INTO events (name, description, event_date, start_time, end_time, target_audience, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)");
-    $stmt->execute([$name, $description, $eventDate, $startTime, $endTime, $targetAudience, $isActive]);
+    try {
+        $stmt = $db->prepare("INSERT INTO events (name, description, event_date, start_time, end_time, target_audience, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $stmt->execute([$name, $description, $eventDate, $startTime, $endTime, $targetAudience, $isActive]);
+    } catch (\Throwable $e) {
+        ensureDatabaseTables($db);
+        try {
+            $stmt = $db->prepare("INSERT INTO events (name, description, event_date, start_time, end_time, target_audience, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$name, $description, $eventDate, $startTime, $endTime, $targetAudience, $isActive]);
+        } catch (\Throwable $e2) {
+            $stmt = $db->prepare("INSERT INTO events (name, description, event_date, is_active) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$name, $description, $eventDate, $isActive]);
+        }
+    }
 
     $newId = (int)$db->lastInsertId();
 
@@ -126,8 +179,19 @@ if ($method === 'PUT') {
         $db->exec("UPDATE events SET is_active = 0");
     }
 
-    $stmt = $db->prepare("UPDATE events SET name = ?, description = ?, event_date = ?, start_time = ?, end_time = ?, target_audience = ?, is_active = ? WHERE id = ?");
-    $stmt->execute([$name, $description, $eventDate, $startTime, $endTime, $targetAudience, $isActive, $id]);
+    try {
+        $stmt = $db->prepare("UPDATE events SET name = ?, description = ?, event_date = ?, start_time = ?, end_time = ?, target_audience = ?, is_active = ? WHERE id = ?");
+        $stmt->execute([$name, $description, $eventDate, $startTime, $endTime, $targetAudience, $isActive, $id]);
+    } catch (\Throwable $e) {
+        ensureDatabaseTables($db);
+        try {
+            $stmt = $db->prepare("UPDATE events SET name = ?, description = ?, event_date = ?, start_time = ?, end_time = ?, target_audience = ?, is_active = ? WHERE id = ?");
+            $stmt->execute([$name, $description, $eventDate, $startTime, $endTime, $targetAudience, $isActive, $id]);
+        } catch (\Throwable $e2) {
+            $stmt = $db->prepare("UPDATE events SET name = ?, description = ?, event_date = ?, is_active = ? WHERE id = ?");
+            $stmt->execute([$name, $description, $eventDate, $isActive, $id]);
+        }
+    }
 
     sendJSON(['success' => true, 'message' => 'Data acara berhasil diperbarui']);
 }

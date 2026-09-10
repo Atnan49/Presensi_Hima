@@ -90,12 +90,13 @@ if ($alreadyAttended) {
 }
 
 // 4. Belum absen pada sesi ini → simpan absensi dengan proteksi duplicate race condition
+$isTelat = (!empty($_GET['telat']) && $_GET['telat'] !== '0') || (!empty($_GET['is_late']) && $_GET['is_late'] !== '0') || (isset($_GET['status']) && strtolower($_GET['status']) === 'telat') ? 1 : 0;
 try {
     $stmtInsert = $db->prepare("
-        INSERT INTO attendance (student_id, event_id, session_id, session_name, uid, tap_time, tap_date)
-        VALUES (?, ?, ?, ?, ?, NOW(), ?)
+        INSERT INTO attendance (student_id, event_id, session_id, session_name, uid, tap_time, tap_date, telat)
+        VALUES (?, ?, ?, ?, ?, NOW(), ?, ?)
     ");
-    $stmtInsert->execute([$student['id'], $eventId, $sessionId, $sessionName, $uid, $today]);
+    $stmtInsert->execute([$student['id'], $eventId, $sessionId, $sessionName, $uid, $today, $isTelat]);
 } catch (PDOException $e) {
     // Tangkap bila terjadi duplicate entry dari double-tap bersamaan (Error Code 23000)
     if ($e->getCode() == 23000 || strpos($e->getMessage(), 'Duplicate entry') !== false) {
@@ -113,7 +114,16 @@ try {
         ]);
         exit;
     }
-    throw $e;
+    // Fallback jika kolom telat belum termigrasi
+    try {
+        $stmtInsert = $db->prepare("
+            INSERT INTO attendance (student_id, event_id, session_id, session_name, uid, tap_time, tap_date)
+            VALUES (?, ?, ?, ?, ?, NOW(), ?)
+        ");
+        $stmtInsert->execute([$student['id'], $eventId, $sessionId, $sessionName, $uid, $today]);
+    } catch (\Throwable $e2) {
+        throw $e;
+    }
 }
 
 sendJSON([

@@ -1501,8 +1501,12 @@ function setQuickDate(preset) {
 async function loadEvents() {
   try {
     const res = await fetch(API.events);
+    if (!res.ok) {
+      console.warn(`[Events API] HTTP ${res.status}: Gagal memuat data program kerja.`);
+      return;
+    }
     const data = await res.json();
-    if (data.success) {
+    if (data && data.success) {
       state.events = data.data || [];
       state.activeEvent = data.active_event || null;
       renderEventsTable(state.events);
@@ -1876,10 +1880,12 @@ async function loadCommittees(eventId) {
   // 2. Fetch dari MySQL API lokal
   try {
     const res = await fetch(`${API.eventCommittees}?event_id=${eventId}`);
-    const data = await res.json();
-    if (data.success && Array.isArray(data.data)) {
-      renderCommitteesTable(data.data, eventId);
-      return;
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.data)) {
+        renderCommitteesTable(data.data, eventId);
+        return;
+      }
     }
   } catch (e) {
     console.warn('MySQL committee fetch notice:', e);
