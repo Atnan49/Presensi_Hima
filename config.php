@@ -64,17 +64,22 @@ function getDB() {
             // Synchronize MySQL timezone with Asia/Jakarta (UTC+7)
             $pdo->exec("SET time_zone = '+07:00'");
 
-            // Auto-migrasi skema secara aman jika ada tabel/kolom baru yang belum ada di server live
+            // Auto-migrasi skema secara 100% otomatis saat membuka web, tanpa perlu phpMyAdmin
             static $tablesChecked = false;
             if (!$tablesChecked) {
                 $tablesChecked = true;
                 try {
-                    $chk = $pdo->query("SHOW TABLES LIKE 'event_committees'")->fetch();
-                    if (!$chk || !empty($_GET['init_tables'])) {
+                    $chkTable    = $pdo->query("SHOW TABLES LIKE 'event_committees'")->fetch();
+                    $chkTelat    = $pdo->query("SHOW COLUMNS FROM `attendance` LIKE 'telat'")->fetch();
+                    $chkAudience = $pdo->query("SHOW COLUMNS FROM `events` LIKE 'target_audience'")->fetch();
+                    $chkCategory = $pdo->query("SHOW COLUMNS FROM `students` LIKE 'category'")->fetch();
+
+                    if (!$chkTable || !$chkTelat || !$chkAudience || !$chkCategory || !empty($_GET['init_tables'])) {
                         ensureDatabaseTables($pdo);
                     }
                 } catch (\Throwable $eChk) {
-                    // Abaikan error pengecekan
+                    // Jika ada error pada SHOW COLUMNS (misal tabel belum ada sama sekali), otomatis jalankan migrasi
+                    ensureDatabaseTables($pdo);
                 }
             }
         } catch (PDOException $e) {

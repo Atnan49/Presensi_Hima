@@ -2,6 +2,10 @@
 // Login administrator presensi HIMATIF
 
 require_once 'config.php';
+// Otomatis cek & migrasi struktur database saat membuka web tanpa perlu buka phpMyAdmin
+try {
+    getDB();
+} catch (\Throwable $e) {}
 startSessionSafe();
 
 if (isLoggedIn()) {
