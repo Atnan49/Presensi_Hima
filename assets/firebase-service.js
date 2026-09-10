@@ -240,6 +240,7 @@ export function initFirebaseListeners() {
             session_id: item.session_id || 'sesi_1',
             session_name: item.session_name || 'Sesi 1 (Datang)',
             event_name: item.event_name || 'Kegiatan HIMA Umum',
+            telat: item.telat === true || item.telat === 1 || item.telat === 'true',
             waktu: parsed.waktu,
             date: parsed.date,
             timestamp: parsed.timestamp
@@ -261,7 +262,11 @@ export function initFirebaseListeners() {
         // Tampilkan Toast jika bukan saat halaman baru pertama kali dibuka
         if (!isInitialLoad && latestLog && typeof window.showToast === 'function') {
           const sessLabel = latestLog.session_name ? ` [${latestLog.session_name}]` : '';
-          window.showToast(`Presensi: ${latestLog.name}${sessLabel} (${latestLog.waktu})`, 'success');
+          if (latestLog.telat) {
+            window.showToast(`Presensi TELAT: ${latestLog.name}${sessLabel} (${latestLog.waktu})`, 'warning');
+          } else {
+            window.showToast(`Presensi: ${latestLog.name}${sessLabel} (${latestLog.waktu})`, 'success');
+          }
         }
 
         // Refresh data dashboard, rekap, & program kerja dengan debounce
@@ -343,18 +348,21 @@ export async function setActiveEventInFirebase(eventData) {
 }
 
 // Helper untuk sinkronisasi sesi presensi aktif ke Firebase
-export async function setActiveSessionInFirebase(sessionData, optionalName) {
+export async function setActiveSessionInFirebase(sessionData, optionalName, optionalStatus) {
   try {
     let payload;
+    const currentStatus = (window.cloudActiveSession && window.cloudActiveSession.status) || 'aktif';
     if (typeof sessionData === 'object' && sessionData !== null) {
       payload = {
         id: sessionData.id || 'sesi_1',
-        name: sessionData.name || 'Sesi 1 (Datang)'
+        name: sessionData.name || 'Sesi 1 (Datang)',
+        status: sessionData.status || currentStatus || 'aktif'
       };
     } else {
       payload = {
         id: String(sessionData || 'sesi_1'),
-        name: String(optionalName || sessionData || 'Sesi 1 (Datang)')
+        name: String(optionalName || sessionData || 'Sesi 1 (Datang)'),
+        status: optionalStatus || currentStatus || 'aktif'
       };
     }
 
@@ -364,6 +372,25 @@ export async function setActiveSessionInFirebase(sessionData, optionalName) {
     return true;
   } catch (error) {
     console.error("[Firebase] Gagal update sesi aktif di cloud:", error);
+    return false;
+  }
+}
+
+// Helper untuk mengubah status sesi aktif ("aktif" = normal, "nonaktif" = telat)
+export async function setSessionStatusInFirebase(status) {
+  try {
+    const current = window.cloudActiveSession || {};
+    const payload = {
+      id: current.id || 'sesi_1',
+      name: current.name || 'Sesi 1 (Datang)',
+      status: status === 'nonaktif' ? 'nonaktif' : 'aktif'
+    };
+    const sessionRef = ref(db, "active_session");
+    await set(sessionRef, payload);
+    console.log("[Firebase] Status sesi aktif diubah ke:", payload.status);
+    return true;
+  } catch (error) {
+    console.error("[Firebase] Gagal update status sesi aktif di cloud:", error);
     return false;
   }
 }
@@ -457,6 +484,7 @@ window.batchRegisterUsersToFirebase = batchRegisterUsersToFirebase;
 window.deleteUserFromFirebase = deleteUserFromFirebase;
 window.setActiveEventInFirebase = setActiveEventInFirebase;
 window.setActiveSessionInFirebase = setActiveSessionInFirebase;
+window.setSessionStatusInFirebase = setSessionStatusInFirebase;
 window.clearRekapFromFirebase = clearRekapFromFirebase;
 window.clearAttendanceTodayNode = clearAttendanceTodayNode;
 

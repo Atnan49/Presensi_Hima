@@ -110,12 +110,47 @@ function updateActiveSessionDisplay(sessionData) {
   if (!sessionData) return;
   const id = typeof sessionData === 'object' ? (sessionData.id || 'sesi_1') : String(sessionData || 'sesi_1');
   const name = (typeof sessionData === 'object' && sessionData.name) ? sessionData.name : (SESSION_CONFIG[id] || id);
+  const status = (typeof sessionData === 'object' && sessionData.status) ? sessionData.status : 'aktif';
 
-  state.activeSession = { id, name };
+  state.activeSession = { id, name, status };
 
   const select = document.getElementById('select-active-session');
   if (select && select.value !== id) {
     select.value = id;
+  }
+
+  // Update session status badge
+  const statusBadge = document.getElementById('session-status-badge');
+  if (statusBadge) {
+    if (status === 'nonaktif') {
+      statusBadge.className = 'badge badge-warning font-mono font-bold text-xs';
+      statusBadge.textContent = 'TELAT (KUNCI)';
+      statusBadge.title = 'Sesi dikunci: Mahasiswa yang tap saat ini akan ditandai TELAT';
+    } else {
+      statusBadge.className = 'badge badge-success font-mono font-bold text-xs';
+      statusBadge.textContent = 'BUKA (AKTIF)';
+      statusBadge.title = 'Sesi dibuka: Mahasiswa yang tap saat ini tercatat HADIR tepat waktu';
+    }
+  }
+}
+
+async function toggleSessionStatus() {
+  const currentStatus = (state.activeSession && state.activeSession.status) || 'aktif';
+  const newStatus = currentStatus === 'nonaktif' ? 'aktif' : 'nonaktif';
+
+  if (typeof window.setSessionStatusInFirebase === 'function') {
+    try {
+      await window.setSessionStatusInFirebase(newStatus);
+      if (state.activeSession) {
+        state.activeSession.status = newStatus;
+        updateActiveSessionDisplay(state.activeSession);
+      }
+      const label = newStatus === 'nonaktif' ? 'KUNCI (Mode Telat Aktif)' : 'BUKA (Mode Normal/Tepat Waktu)';
+      showToast(`Status sesi diubah: ${label}`, newStatus === 'nonaktif' ? 'warning' : 'success');
+    } catch (e) {
+      console.error('Failed to toggle session status:', e);
+      showToast('Gagal mengubah status sesi', 'danger');
+    }
   }
 }
 
@@ -287,7 +322,7 @@ function renderDashboardTable(records) {
 
   if (!records || records.length === 0) {
     tbody.innerHTML = `
-      <tr><td colspan="6">
+      <tr><td colspan="7">
         <div class="empty-state">
           <div class="empty-text">BELUM ADA ABSENSI HARI INI</div>
           <div class="empty-sub">Data akan muncul secara real-time saat kartu RFID di-tap</div>
@@ -296,16 +331,24 @@ function renderDashboardTable(records) {
     return;
   }
 
-  tbody.innerHTML = records.map((r, i) => `
-    <tr>
-      <td class="font-mono font-bold">${i + 1}</td>
-      <td><span class="td-uid font-mono">${escapeHtml(r.uid)}</span></td>
-      <td class="td-name font-bold">${escapeHtml(r.name)}</td>
-      <td class="font-mono">${escapeHtml(r.nim || '-')}</td>
-      <td class="font-mono"><span class="badge ${getSessionBadgeClass(r.session_id)}">${escapeHtml(formatSessionLabel(r.session_id, r.session_name))}</span></td>
-      <td class="font-mono font-bold">${escapeHtml(r.waktu)}</td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = records.map((r, i) => {
+    const isLate = r.telat === true || r.telat === 1 || r.telat === 'true';
+    const statusBadge = isLate
+      ? '<span class="badge badge-warning font-mono font-bold">TELAT</span>'
+      : '<span class="badge badge-success font-mono font-bold">TEPAT WAKTU</span>';
+
+    return `
+      <tr>
+        <td class="font-mono font-bold">${i + 1}</td>
+        <td><span class="td-uid font-mono">${escapeHtml(r.uid)}</span></td>
+        <td class="td-name font-bold">${escapeHtml(r.name)}</td>
+        <td class="font-mono">${escapeHtml(r.nim || '-')}</td>
+        <td class="font-mono"><span class="badge ${getSessionBadgeClass(r.session_id)}">${escapeHtml(formatSessionLabel(r.session_id, r.session_name))}</span></td>
+        <td class="font-mono font-bold">${escapeHtml(r.waktu)}</td>
+        <td>${statusBadge}</td>
+      </tr>
+    `;
+  }).join('');
 }
 
 let lastRecordedTapTime = '';
@@ -705,11 +748,15 @@ function renderRekapTable(records, summary) {
     const elHadir = document.getElementById('rekap-total-hadir');
     const elMhs   = document.getElementById('rekap-total-mhs');
     const elPersen= document.getElementById('rekap-persen');
+    const elTelat = document.getElementById('rekap-total-telat');
     
     if (elHadir) elHadir.textContent = summary.total_hadir || 0;
     if (elMhs)   elMhs.textContent   = summary.total_mhs   || 0;
     const pct = summary.total_mhs > 0 ? Math.round((summary.total_hadir / summary.total_mhs) * 100) : 0;
     if (elPersen) elPersen.textContent = pct + '%';
+
+    const lateCount = (records || []).filter(r => r.telat === true || r.telat === 1 || r.telat === 'true').length;
+    if (elTelat) elTelat.textContent = lateCount;
   }
 
   if (!records || records.length === 0) {
@@ -723,19 +770,24 @@ function renderRekapTable(records, summary) {
     return;
   }
 
-  tbody.innerHTML = records.map((r, i) => `
-    <tr>
-      <td class="font-mono font-bold">${i + 1}</td>
-      <td><span class="td-uid font-mono">${escapeHtml(r.uid)}</span></td>
-      <td class="td-name font-bold">${escapeHtml(r.name)}</td>
-      <td class="font-mono">${escapeHtml(r.nim || '-')}</td>
-      <td class="font-mono"><span class="badge ${getSessionBadgeClass(r.session_id)}">${escapeHtml(formatSessionLabel(r.session_id, r.session_name))}</span></td>
-      <td class="font-mono font-bold">${escapeHtml(r.waktu)}</td>
-      <td>
-        <span class="badge badge-success font-mono">[TERCATAT]</span>
-      </td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = records.map((r, i) => {
+    const isLate = r.telat === true || r.telat === 1 || r.telat === 'true';
+    const statusBadge = isLate
+      ? '<span class="badge badge-warning font-mono font-bold">TELAT</span>'
+      : '<span class="badge badge-success font-mono font-bold">HADIR</span>';
+
+    return `
+      <tr>
+        <td class="font-mono font-bold">${i + 1}</td>
+        <td><span class="td-uid font-mono">${escapeHtml(r.uid)}</span></td>
+        <td class="td-name font-bold">${escapeHtml(r.name)}</td>
+        <td class="font-mono">${escapeHtml(r.nim || '-')}</td>
+        <td class="font-mono"><span class="badge ${getSessionBadgeClass(r.session_id)}">${escapeHtml(formatSessionLabel(r.session_id, r.session_name))}</span></td>
+        <td class="font-mono font-bold">${escapeHtml(r.waktu)}</td>
+        <td>${statusBadge}</td>
+      </tr>
+    `;
+  }).join('');
 }
 
 async function clearRekapByDate() {
@@ -901,6 +953,7 @@ function downloadExcel(filename, title, period, headers, rows) {
         .text-center { text-align: center; }
         .txt { mso-number-format:"\\@"; text-align: center; }
         .badge { background-color: #dcfce7; color: #166534; font-weight: bold; text-align: center; }
+        .badge-late { background-color: #fef3c7; color: #b45309; font-weight: bold; text-align: center; border: 1px solid #fde68a; }
       </style>
     </head>
     <body>
@@ -931,7 +984,9 @@ function downloadExcel(filename, title, period, headers, rows) {
               let cls = '';
               if (colIdx === 0) cls = 'text-center';        // No
               else if (colIdx === 2) cls = 'txt';            // NIM
-              else if (colIdx === 3 || String(c).includes('HADIR')) cls = 'badge'; // Status Kehadiran
+              else if (colIdx === 3 || String(c).includes('HADIR') || String(c).includes('TELAT')) {
+                cls = String(c).includes('TELAT') ? 'badge-late' : 'badge';
+              }
               else if (colIdx === 4 || colIdx === 5 || colIdx === 6) cls = 'text-center'; // Sesi, Tanggal, Jam
               return `<td class="${cls}">${c ?? '-'}</td>`;
             }).join('')}
@@ -970,7 +1025,7 @@ function exportAttendanceToday(format = 'csv') {
     i + 1,
     r.name,
     r.nim || '-',
-    'HADIR',
+    (r.telat === true || r.telat === 1 || r.telat === 'true') ? 'HADIR (TELAT)' : 'HADIR',
     formatSessionLabel(r.session_id, r.session_name),
     r.date || r.tap_date || today,
     r.waktu
@@ -1004,7 +1059,7 @@ function exportAttendance(format = 'csv') {
     i + 1,
     r.name,
     r.nim || '-',
-    'HADIR',
+    (r.telat === true || r.telat === 1 || r.telat === 'true') ? 'HADIR (TELAT)' : 'HADIR',
     formatSessionLabel(r.session_id, r.session_name),
     r.date || r.tap_date || date,
     r.waktu
@@ -1033,7 +1088,7 @@ function exportAllAttendance(format = 'csv') {
     i + 1,
     r.name,
     r.nim || '-',
-    'HADIR',
+    (r.telat === true || r.telat === 1 || r.telat === 'true') ? 'HADIR (TELAT)' : 'HADIR',
     formatSessionLabel(r.session_id, r.session_name),
     r.date || r.tap_date || '-',
     r.waktu
@@ -1975,6 +2030,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.state = state;
   window.onSessionChange = onSessionChange;
   window.updateActiveSessionDisplay = updateActiveSessionDisplay;
+  window.toggleSessionStatus = toggleSessionStatus;
   window.formatSessionLabel = formatSessionLabel;
   window.updateLiveFeed = updateLiveFeed;
   window.updateActiveEventDisplay = updateActiveEventDisplay;

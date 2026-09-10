@@ -207,11 +207,12 @@ if ($format === 'csv') {
     fputcsv($out, ['']);
     fputcsv($out, ['NO', 'NAMA MAHASISWA', 'NIM', 'STATUS KEHADIRAN', 'SESI PRESENSI', 'TANGGAL', 'JAM TAP']);
     foreach ($rows as $i => $r) {
+        $isTelat = !empty($r['telat']);
         fputcsv($out, [
             $i + 1,
             sanitizeCsvFormula($r['name']),
             sanitizeCsvFormula($r['nim'] ?: '-'),
-            'HADIR',
+            $isTelat ? 'HADIR (TELAT)' : 'HADIR',
             sanitizeCsvFormula($r['session_name']),
             sanitizeCsvFormula($r['tanggal']),
             sanitizeCsvFormula($r['jam'])
@@ -248,6 +249,7 @@ echo "\xEF\xBB\xBF"; // UTF-8 BOM
     .td-uid { font-family: 'Consolas', monospace; font-weight: bold; background-color: #f1f5f9; text-align: center; mso-number-format:"\@"; }
     .nim { mso-number-format:"\@"; text-align: center; font-family: 'Consolas', monospace; }
     .badge-hadir { background-color: #dcfce7; color: #15803d; font-weight: bold; text-align: center; border: 1px solid #86efac; }
+    .badge-telat { background-color: #fef3c7; color: #b45309; font-weight: bold; text-align: center; border: 1px solid #fde68a; }
     
     .footer-sign { margin-top: 40px; width: 100%; border-collapse: collapse; }
     .footer-sign td { border: none; padding: 10px; font-size: 10pt; }
@@ -279,12 +281,14 @@ echo "\xEF\xBB\xBF"; // UTF-8 BOM
         <td colspan="7" class="text-center" style="padding: 20px; color: #94a3b8;">Tidak ada data absensi pada tanggal ini</td>
       </tr>
       <?php else: ?>
-        <?php foreach ($rows as $i => $r): ?>
+        <?php foreach ($rows as $i => $r): 
+          $isTelat = !empty($r['telat']);
+        ?>
         <tr>
           <td class="text-center" style="font-weight: bold;"><?= $i + 1 ?></td>
           <td style="font-weight: 600;"><?= htmlspecialchars($r['name']) ?></td>
           <td class="nim"><?= htmlspecialchars($r['nim'] ?: '-') ?></td>
-          <td class="badge-hadir">HADIR</td>
+          <td class="<?= $isTelat ? 'badge-telat' : 'badge-hadir' ?>"><?= $isTelat ? 'HADIR (TELAT)' : 'HADIR' ?></td>
           <td class="text-center" style="font-weight: 600;"><?= htmlspecialchars($r['session_name']) ?></td>
           <td class="text-center"><?= htmlspecialchars($r['tanggal']) ?></td>
           <td class="text-center" style="font-weight: bold;"><?= htmlspecialchars($r['jam']) ?></td>

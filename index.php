@@ -133,6 +133,12 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
           </select>
         </div>
 
+        <!-- Session Status (Tepat Waktu / Telat Mode) Toggle -->
+        <div class="session-status-box" id="session-status-box" onclick="toggleSessionStatus()" style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px; background: #ffffff; border: 2px solid #000; padding: 4px 8px; box-shadow: 2px 2px 0px #000;" title="Klik untuk mengubah status sesi: BUKA (Tepat Waktu) atau KUNCI (Semua yang tap dianggap TELAT)">
+          <span style="font-size: 10px; font-weight: 800; background: #000; color: #fff; padding: 2px 6px; letter-spacing: 0.05em;">STATUS</span>
+          <span id="session-status-badge" class="badge badge-success font-mono font-bold text-xs" style="margin: 0; padding: 2px 6px;">BUKA (AKTIF)</span>
+        </div>
+
         <button class="btn btn-secondary btn-xs audio-toggle-btn" id="audio-toggle-btn" onclick="toggleAudioChime()" title="Aktifkan atau nonaktifkan notifikasi suara tap">
           <span id="audio-status-label">Suara: Aktif</span>
         </button>
@@ -217,11 +223,12 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
                 <th>NIM</th>
                 <th>Sesi</th>
                 <th>Jam Tap</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody id="dashboard-tbody">
               <tr>
-                <td colspan="6">
+                <td colspan="7">
                   <div class="empty-state">
                     <div class="empty-text">Memuat data...</div>
                   </div>
@@ -363,8 +370,8 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
         </div>
       </div>
 
-      <!-- 2. Stat Cards Summary (3 Kolom Sejajar & Simetris) -->
-      <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 20px;">
+      <!-- 2. Stat Cards Summary (4 Kolom Sejajar & Simetris) -->
+      <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 20px;">
         <div class="stat-card stat-card-success">
           <div class="stat-info">
             <div class="stat-label">Total Hadir</div>
@@ -378,6 +385,12 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
           </div>
         </div>
         <div class="stat-card stat-card-warning">
+          <div class="stat-info">
+            <div class="stat-label">Total Telat</div>
+            <div class="stat-value" id="rekap-total-telat">0</div>
+          </div>
+        </div>
+        <div class="stat-card stat-card-secondary" style="background: #f1f5f9;">
           <div class="stat-info">
             <div class="stat-label">Persentase Kehadiran</div>
             <div class="stat-value" id="rekap-persen">0%</div>
