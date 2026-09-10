@@ -6,7 +6,16 @@
 //   - /users (Registered student database)
 // ============================================================
 
-import { db, ref, onValue, set, remove, update, query, limitToLast } from "./firebase-config.js";
+import { 
+  ref, 
+  onValue, 
+  set, 
+  remove, 
+  update, 
+  query, 
+  limitToLast 
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { db } from "./firebase-config.js?v=2.2";
 
 // Status koneksi Firebase
 let isFirebaseConnected = false;
@@ -118,7 +127,18 @@ export function initFirebaseListeners() {
     const espDot = document.getElementById("esp-dot");
     if (!espText || !espDot) return;
 
-    if (data && data.last_seen && (Date.now() - data.last_seen < 45000)) {
+    if (!data) {
+      espText.textContent = "OFFLINE";
+      espDot.className = "esp-dot offline";
+      return;
+    }
+
+    const lastSeen = Number(data.last_seen);
+    // Konversi detik (10 digit) ke milidetik jika perlu
+    const lastSeenMs = lastSeen < 1e11 ? lastSeen * 1000 : lastSeen;
+    const isOnline = lastSeenMs > 0 && Math.abs(Date.now() - lastSeenMs) < 60000;
+
+    if (isOnline) {
       espText.textContent = "ONLINE (CLOUD)";
       espDot.className = "esp-dot online";
     } else {

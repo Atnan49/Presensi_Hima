@@ -108,8 +108,8 @@ async function onSessionChange(sessionId) {
 
 function updateActiveSessionDisplay(sessionData) {
   if (!sessionData) return;
-  const id = sessionData.id || 'sesi_1';
-  const name = sessionData.name || SESSION_CONFIG[id] || id;
+  const id = typeof sessionData === 'object' ? (sessionData.id || 'sesi_1') : String(sessionData || 'sesi_1');
+  const name = (typeof sessionData === 'object' && sessionData.name) ? sessionData.name : (SESSION_CONFIG[id] || id);
 
   state.activeSession = { id, name };
 

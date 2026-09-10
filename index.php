@@ -658,6 +658,7 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
     <div class="text-xs text-muted font-mono mb-3">Pastikan password baru kuat dan mudah Anda ingat.</div>
 
     <form id="form-change-password" onsubmit="event.preventDefault(); submitChangePassword();">
+      <input type="text" name="username" value="admin" autocomplete="username" style="display:none;" aria-hidden="true">
       <div class="form-group">
         <label class="form-label" for="pwd-old">Password Lama *</label>
         <input type="password" id="pwd-old" placeholder="Masukkan password lama" autocomplete="current-password" required>
