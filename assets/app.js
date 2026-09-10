@@ -746,11 +746,7 @@ async function clearRekapByDate() {
     return;
   }
 
-  const confirmDate = prompt(`PERINGATAN: Tindakan ini akan menghapus permanen semua log presensi pada tanggal ${date} (Lokal & Cloud).\n\nKetik "${date}" di bawah untuk konfirmasi:`);
-  if (confirmDate !== date) {
-    if (confirmDate !== null) {
-      showToast('Penghapusan dibatalkan (tanggal konfirmasi tidak cocok)', 'warning');
-    }
+  if (!confirm(`Hapus seluruh log rekap presensi pada tanggal ${date} (Lokal & Cloud)?`)) {
     return;
   }
 
@@ -1138,22 +1134,25 @@ async function checkEspStatus() {
   const text = document.getElementById('esp-status-text');
   if (!dot || !text) return;
 
-  // Jika terhubung ke Firebase Realtime Database Cloud
+  // Jika terhubung ke Firebase Realtime Database Cloud,
+  // status dikelola secara realtime oleh listener /devices/esp8266 di firebase-service.js
   if (window.isFirebaseConnected) {
-    dot.className    = 'esp-dot online';
-    text.textContent = 'ONLINE (CLOUD)';
     return;
   }
 
   // Cek fallback ke API lokal jika tidak ada Firebase
   try {
-    const res = await fetch('api/esp_status.php', { signal: AbortSignal.timeout(3000) });
+    const res = await fetch('api/esp_status.php', {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(3000)
+    });
     const data = await res.json();
     if (data.online) {
       dot.className  = 'esp-dot online';
       text.textContent = 'ONLINE (LOCAL)';
     } else {
-      throw new Error('offline');
+      dot.className  = 'esp-dot offline';
+      text.textContent = 'OFFLINE';
     }
   } catch {
     dot.className    = 'esp-dot offline';

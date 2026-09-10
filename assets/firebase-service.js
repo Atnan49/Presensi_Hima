@@ -122,7 +122,7 @@ export function initFirebaseListeners() {
       espText.textContent = "ONLINE (CLOUD)";
       espDot.className = "esp-dot online";
     } else {
-      espText.textContent = "STANDBY / OFFLINE";
+      espText.textContent = "OFFLINE";
       espDot.className = "esp-dot offline";
     }
   });
@@ -388,8 +388,13 @@ export async function clearRekapFromFirebase(date) {
 export async function clearAttendanceTodayNode(date) {
   if (!window.isFirebaseConnected || !date) return;
   try {
-    const sessions = ['sesi_1', 'sesi_2', 'sesi_3'];
-    for (const s of sessions) {
+    const sessionIds = new Set(['sesi_1', 'sesi_2', 'sesi_3']);
+    if (window.cloudLogs && Array.isArray(window.cloudLogs)) {
+      window.cloudLogs.forEach(l => {
+        if (l.session_id) sessionIds.add(l.session_id);
+      });
+    }
+    for (const s of sessionIds) {
       const nodeRef = ref(db, `attendance_today/${date}_${s}`);
       await remove(nodeRef);
     }
