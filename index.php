@@ -310,7 +310,7 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
           </div>
           <div class="flex gap-2 items-center" style="flex-wrap: wrap;">
             <div class="search-box">
-              <input type="search" id="search-students" placeholder="Cari nama, NIM, divisi, atau UID..."
+              <input type="search" id="search-students" placeholder="Cari nama, NIM, bidang, atau UID..."
                      oninput="searchStudents(this.value)">
             </div>
             <button class="btn btn-warning btn-sm" onclick="openAddManualModal()">+ Tambah Mahasiswa</button>
@@ -338,7 +338,7 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
                 <th>Nama Mahasiswa</th>
                 <th>NIM</th>
                 <th>Kategori</th>
-                <th>Divisi &amp; Jabatan</th>
+                <th>Bidang &amp; Jabatan</th>
                 <th>Total Hadir</th>
                 <th style="width: 130px;">Aksi</th>
               </tr>
@@ -537,14 +537,21 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">Divisi / Departemen</label>
-        <input type="text" id="reg-division" placeholder="Contoh: Kaderisasi, Humas, Inti">
+        <label class="form-label">Bidang</label>
+        <select id="reg-division" style="width: 100%; border: 2px solid #000; padding: 8px 10px; font-weight: 700; background: #fff;">
+          <option value="">-- Pilih Bidang --</option>
+          <option value="Keilmuan dan Penelitian">Keilmuan dan Penelitian</option>
+          <option value="Kemahasiswaan">Kemahasiswaan</option>
+          <option value="Minat dan Bakat">Minat dan Bakat</option>
+          <option value="Kaderisasi">Kaderisasi</option>
+          <option value="Sosial Masyarakat">Sosial Masyarakat</option>
+        </select>
       </div>
     </div>
 
     <div class="form-group">
       <label class="form-label">Jabatan Formal di Himpunan</label>
-      <input type="text" id="reg-position" placeholder="Contoh: Ketua Umum, Ketua Divisi, Staf">
+      <input type="text" id="reg-position" placeholder="Contoh: Ketua Umum, Ketua Bidang, Staf">
     </div>
 
     <div class="modal-actions">
@@ -586,14 +593,21 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">Divisi / Departemen</label>
-        <input type="text" id="edit-division" placeholder="Contoh: Kaderisasi, Humas, Inti">
+        <label class="form-label">Bidang</label>
+        <select id="edit-division" style="width: 100%; border: 2px solid #000; padding: 8px 10px; font-weight: 700; background: #fff;">
+          <option value="">-- Pilih Bidang --</option>
+          <option value="Keilmuan dan Penelitian">Keilmuan dan Penelitian</option>
+          <option value="Kemahasiswaan">Kemahasiswaan</option>
+          <option value="Minat dan Bakat">Minat dan Bakat</option>
+          <option value="Kaderisasi">Kaderisasi</option>
+          <option value="Sosial Masyarakat">Sosial Masyarakat</option>
+        </select>
       </div>
     </div>
 
     <div class="form-group">
       <label class="form-label">Jabatan Formal di Himpunan</label>
-      <input type="text" id="edit-position" placeholder="Contoh: Ketua Umum, Ketua Divisi, Staf">
+      <input type="text" id="edit-position" placeholder="Contoh: Ketua Umum, Ketua Bidang, Staf">
     </div>
 
     <div class="modal-actions">
@@ -641,7 +655,7 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
 
     <div class="form-group">
       <label class="form-label">Keterangan / Deskripsi Singkat</label>
-      <input type="text" id="event-desc" placeholder="Contoh: Wajib untuk seluruh pengurus divisi">
+      <input type="text" id="event-desc" placeholder="Contoh: Wajib untuk seluruh pengurus bidang">
     </div>
 
     <div class="form-group" style="margin-top: 12px;">

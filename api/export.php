@@ -57,7 +57,7 @@ if ($type === 'students') {
         fputcsv($out, ['# TOTAL: ' . count($rows) . ' Mahasiswa']);
         fputcsv($out, ['# WAKTU CETAK: ' . date('d/m/Y H:i:s')]);
         fputcsv($out, ['']);
-        fputcsv($out, ['NO', 'UID KARTU', 'NAMA MAHASISWA', 'NIM', 'KATEGORI', 'DIVISI', 'JABATAN', 'TOTAL HADIR', 'TERDAFTAR SEJAK']);
+        fputcsv($out, ['NO', 'UID KARTU', 'NAMA MAHASISWA', 'NIM', 'KATEGORI', 'BIDANG', 'JABATAN', 'TOTAL HADIR', 'TERDAFTAR SEJAK']);
         foreach ($rows as $i => $r) {
             fputcsv($out, [
                 $i + 1,
@@ -282,7 +282,7 @@ if ($format === 'csv') {
     fputcsv($out, ['# TOTAL HADIR: ' . count($rows) . ' Mahasiswa']);
     fputcsv($out, ['# WAKTU CETAK: ' . date('d/m/Y H:i:s')]);
     fputcsv($out, ['']);
-    fputcsv($out, ['NO', 'NAMA MAHASISWA', 'NIM', 'KATEGORI', 'DIVISI', 'JABATAN PANITIA', 'STATUS KEHADIRAN', 'SESI PRESENSI', 'TANGGAL', 'JAM TAP']);
+    fputcsv($out, ['NO', 'NAMA MAHASISWA', 'NIM', 'KATEGORI', 'BIDANG', 'JABATAN PANITIA', 'STATUS KEHADIRAN', 'SESI PRESENSI', 'TANGGAL', 'JAM TAP']);
     foreach ($rows as $i => $r) {
         $isTelat = !empty($r['telat']);
         fputcsv($out, [

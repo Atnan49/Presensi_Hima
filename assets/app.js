@@ -725,7 +725,16 @@ function openEditModal(uid, name, nim, id, category = 'Anggota', division = '', 
   const catEl = document.getElementById('edit-category');
   if (catEl) catEl.value = category || 'Anggota';
   const divEl = document.getElementById('edit-division');
-  if (divEl) divEl.value = division || '';
+  if (divEl) {
+    if (division && !Array.from(divEl.options).some(o => o.value.toLowerCase() === division.toLowerCase())) {
+      const customOpt = document.createElement('option');
+      customOpt.value = division;
+      customOpt.textContent = division;
+      divEl.appendChild(customOpt);
+    }
+    const matchingOpt = Array.from(divEl.options).find(o => o.value.toLowerCase() === (division || '').toLowerCase());
+    divEl.value = matchingOpt ? matchingOpt.value : (division || '');
+  }
   const posEl = document.getElementById('edit-position');
   if (posEl) posEl.value = position || '';
 
@@ -1155,7 +1164,7 @@ function exportAttendanceToday(format = 'csv') {
   const activeEvId = state.activeEvent?.id;
   const commMap = (activeEvId && window.cloudEventCommittees && window.cloudEventCommittees[activeEvId]) || {};
 
-  const headers = ['No', 'Nama Mahasiswa', 'NIM', 'Kategori Struktur', 'Divisi', 'Jabatan Panitia', 'Status Kehadiran', 'Sesi Presensi', 'Tanggal', 'Jam Tap'];
+  const headers = ['No', 'Nama Mahasiswa', 'NIM', 'Kategori Struktur', 'Bidang', 'Jabatan Panitia', 'Status Kehadiran', 'Sesi Presensi', 'Tanggal', 'Jam Tap'];
   const rows = logsToday.map((r, i) => {
     const studentInfo = (state.students || []).find(s => s.uid === r.uid) || (window.cloudUsers && window.cloudUsers[r.uid]) || {};
     const panitia = commMap[r.uid] || {};
@@ -1199,7 +1208,7 @@ function exportAttendance(format = 'csv') {
   const activeEvId = state.activeEvent?.id;
   const commMap = (activeEvId && window.cloudEventCommittees && window.cloudEventCommittees[activeEvId]) || {};
 
-  const headers = ['No', 'Nama Mahasiswa', 'NIM', 'Kategori Struktur', 'Divisi', 'Jabatan Panitia', 'Status Kehadiran', 'Sesi Presensi', 'Tanggal', 'Jam Tap'];
+  const headers = ['No', 'Nama Mahasiswa', 'NIM', 'Kategori Struktur', 'Bidang', 'Jabatan Panitia', 'Status Kehadiran', 'Sesi Presensi', 'Tanggal', 'Jam Tap'];
   const rows = logsFiltered.map((r, i) => {
     const studentInfo = (state.students || []).find(s => s.uid === r.uid) || (window.cloudUsers && window.cloudUsers[r.uid]) || {};
     const panitia = commMap[r.uid] || {};
@@ -1247,7 +1256,7 @@ async function exportAllAttendance(format = 'csv') {
     return;
   }
 
-  const headers = ['No', 'Nama Mahasiswa', 'NIM', 'Kategori Struktur', 'Divisi', 'Status Kehadiran', 'Sesi Presensi', 'Tanggal', 'Jam Tap'];
+  const headers = ['No', 'Nama Mahasiswa', 'NIM', 'Kategori Struktur', 'Bidang', 'Status Kehadiran', 'Sesi Presensi', 'Tanggal', 'Jam Tap'];
   const rows = allLogs.map((r, i) => {
     const studentInfo = (state.students || []).find(s => s.uid === r.uid) || (window.cloudUsers && window.cloudUsers[r.uid]) || {};
     return [
@@ -1280,7 +1289,7 @@ function exportStudents(format = 'csv') {
     return;
   }
 
-  const headers = ['No', 'UID Kartu', 'Nama Mahasiswa', 'NIM', 'Kategori Struktur', 'Divisi', 'Jabatan', 'Tanggal Terdaftar'];
+  const headers = ['No', 'UID Kartu', 'Nama Mahasiswa', 'NIM', 'Kategori Struktur', 'Bidang', 'Jabatan', 'Tanggal Terdaftar'];
   const rows = students.map((s, i) => [
     i + 1,
     s.uid,
