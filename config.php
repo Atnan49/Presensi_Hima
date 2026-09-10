@@ -218,6 +218,36 @@ function ensureDatabaseTables($pdo) {
             if (!$colEventTime) {
                 $pdo->exec("ALTER TABLE `events` ADD COLUMN `start_time` TIME NULL DEFAULT '08:00:00' AFTER `event_date`, ADD COLUMN `end_time` TIME NULL DEFAULT NULL AFTER `start_time`");
             }
+
+            // Migration: tambahkan target_audience ke events jika belum ada
+            $colEventTarget = $pdo->query("SHOW COLUMNS FROM `events` LIKE 'target_audience'")->fetch();
+            if (!$colEventTarget) {
+                $pdo->exec("ALTER TABLE `events` ADD COLUMN `target_audience` ENUM('all', 'committee_only', 'bpi_bph') NOT NULL DEFAULT 'all' AFTER `end_time`");
+            }
+
+            // Migration: tambahkan category, division, position ke students jika belum ada
+            $colCategory = $pdo->query("SHOW COLUMNS FROM `students` LIKE 'category'")->fetch();
+            if (!$colCategory) {
+                $pdo->exec("ALTER TABLE `students` ADD COLUMN `category` ENUM('BPI', 'BPH', 'Anggota') NOT NULL DEFAULT 'Anggota' AFTER `nim`, ADD COLUMN `division` VARCHAR(100) NULL DEFAULT NULL AFTER `category`, ADD COLUMN `position` VARCHAR(100) NULL DEFAULT NULL AFTER `division`, ADD KEY `idx_category` (`category`), ADD KEY `idx_division` (`division`)");
+            }
+
+            // Migration: buat tabel event_committees jika belum ada
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `event_committees` (
+                  `id` INT(11) NOT NULL AUTO_INCREMENT,
+                  `event_id` INT(11) NOT NULL,
+                  `student_id` INT(11) NOT NULL,
+                  `role` VARCHAR(100) NOT NULL,
+                  `division` VARCHAR(100) DEFAULT NULL,
+                  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  PRIMARY KEY (`id`),
+                  UNIQUE KEY `uniq_event_student` (`event_id`, `student_id`),
+                  KEY `idx_event_comm` (`event_id`),
+                  KEY `idx_student_comm` (`student_id`),
+                  CONSTRAINT `fk_comm_event` FOREIGN KEY (`event_id`) REFERENCES `events` (`id`) ON DELETE CASCADE,
+                  CONSTRAINT `fk_comm_student` FOREIGN KEY (`student_id`) REFERENCES `students` (`id`) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            ");
         } catch (Exception $e) {
             // Kolom atau index mungkin sudah ada
         }

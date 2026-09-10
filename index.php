@@ -300,33 +300,48 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
     <section class="panel" id="panel-mahasiswa">
       <div class="card">
         <div class="card-header">
-          <div class="card-title">Daftar Mahasiswa Terdaftar</div>
+          <div>
+            <div class="card-title">Daftar Mahasiswa &amp; Struktur Organisasi</div>
+            <div class="text-xs text-muted font-mono mt-1">Klasifikasi kepengurusan: BPI (Badan Pengurus Inti), BPH (Badan Pengurus Harian), dan Anggota HIMA</div>
+          </div>
           <div class="flex gap-2 items-center" style="flex-wrap: wrap;">
             <div class="search-box">
-              <input type="search" id="search-students" placeholder="Cari nama, NIM, atau UID..."
+              <input type="search" id="search-students" placeholder="Cari nama, NIM, divisi, atau UID..."
                      oninput="searchStudents(this.value)">
             </div>
-            <button class="btn btn-warning btn-sm" onclick="openAddManualModal()">+ Tambah</button>
+            <button class="btn btn-warning btn-sm" onclick="openAddManualModal()">+ Tambah Mahasiswa</button>
             <button class="btn btn-primary btn-sm" onclick="openImportModal()">+ Import CSV/Excel</button>
             <button class="btn btn-secondary btn-sm" onclick="exportStudents('csv')">Download CSV</button>
             <button class="btn btn-secondary btn-sm" onclick="exportStudents('excel')">Download Excel</button>
           </div>
         </div>
+
+        <!-- Filter Tab Kategori Organisasi (BPI / BPH / Anggota) -->
+        <div style="padding: 10px 16px; background: var(--bg-alt); border-bottom: 2px solid #000; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <span class="font-mono text-xs font-bold" style="letter-spacing: 0.05em;">FILTER STRUKTUR:</span>
+          <button type="button" class="btn btn-xs btn-primary filter-org-btn active" id="filter-btn-all" onclick="filterStudentsByCategory('')" style="border: 2px solid #000; font-weight: 800;">SEMUA (<span id="count-all">0</span>)</button>
+          <button type="button" class="btn btn-xs filter-org-btn" id="filter-btn-bpi" onclick="filterStudentsByCategory('BPI')" style="background: #f0abfc; color: #000; border: 2px solid #000; font-weight: 800;">BPI (<span id="count-bpi">0</span>)</button>
+          <button type="button" class="btn btn-xs filter-org-btn" id="filter-btn-bph" onclick="filterStudentsByCategory('BPH')" style="background: #67e8f9; color: #000; border: 2px solid #000; font-weight: 800;">BPH (<span id="count-bph">0</span>)</button>
+          <button type="button" class="btn btn-xs filter-org-btn" id="filter-btn-anggota" onclick="filterStudentsByCategory('Anggota')" style="background: #fef08a; color: #000; border: 2px solid #000; font-weight: 800;">ANGGOTA (<span id="count-anggota">0</span>)</button>
+        </div>
+
         <div class="table-wrapper">
           <table>
             <thead>
               <tr>
-                <th>No</th>
+                <th style="width: 40px;">No</th>
                 <th>UID Kartu</th>
                 <th>Nama Mahasiswa</th>
                 <th>NIM</th>
+                <th>Kategori</th>
+                <th>Divisi &amp; Jabatan</th>
                 <th>Total Hadir</th>
-                <th>Aksi</th>
+                <th style="width: 130px;">Aksi</th>
               </tr>
             </thead>
             <tbody id="students-tbody">
               <tr>
-                <td colspan="6">
+                <td colspan="8">
                   <div class="empty-state">
                     <div class="empty-text">Memuat data mahasiswa...</div>
                   </div>
@@ -350,14 +365,20 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
             <label class="form-label" style="margin-bottom: 0; white-space: nowrap; font-size: 12px;">Tanggal:</label>
             <input type="date" id="rekap-date" onchange="loadRekap()" style="width: auto; min-width: 140px; padding: 6px 10px; font-size: 12px;">
             <button class="btn btn-secondary btn-sm" onclick="setQuickDate('today')" type="button">Hari Ini</button>
-            <button class="btn btn-secondary btn-sm" onclick="setQuickDate('yesterday')" type="button">Kemarin</button>
-
-            <label class="form-label" style="margin-bottom: 0; white-space: nowrap; font-size: 12px; margin-left: 6px;">Filter Sesi:</label>
+            <button class="btn btn-secondary btn-sm" onclick="setQuickDate('yesterday')" type="button">Kemarin</button>            <label class="form-label" style="margin-bottom: 0; white-space: nowrap; font-size: 12px; margin-left: 6px;">Filter Sesi:</label>
             <select id="rekap-session-filter" onchange="loadRekap()" style="width: auto; min-width: 130px; padding: 6px 8px; font-size: 12px; font-family: var(--font-mono); border: 2px solid #000;">
               <option value="">Semua Sesi</option>
               <option value="sesi_1">Sesi 1 (Datang)</option>
               <option value="sesi_2">Sesi 2 (Ishoma)</option>
               <option value="sesi_3">Sesi 3 (Pulang)</option>
+            </select>
+
+            <label class="form-label" style="margin-bottom: 0; white-space: nowrap; font-size: 12px; margin-left: 6px;">Kategori:</label>
+            <select id="rekap-category-filter" onchange="loadRekap()" style="width: auto; min-width: 120px; padding: 6px 8px; font-size: 12px; font-family: var(--font-mono); border: 2px solid #000;">
+              <option value="">Semua Kategori</option>
+              <option value="BPI">BPI</option>
+              <option value="BPH">BPH</option>
+              <option value="Anggota">Anggota</option>
             </select>
           </div>
 
@@ -374,13 +395,13 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
       <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 20px;">
         <div class="stat-card stat-card-success">
           <div class="stat-info">
-            <div class="stat-label">Total Hadir</div>
+            <div class="stat-label">Hadir Terdata</div>
             <div class="stat-value" id="rekap-total-hadir">0</div>
           </div>
         </div>
         <div class="stat-card stat-card-primary">
           <div class="stat-info">
-            <div class="stat-label">Total Mahasiswa</div>
+            <div class="stat-label">Total Target</div>
             <div class="stat-value" id="rekap-total-mhs">0</div>
           </div>
         </div>
@@ -415,6 +436,7 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
                 <th>UID Kartu</th>
                 <th>Nama Mahasiswa</th>
                 <th>NIM</th>
+                <th>Kategori &amp; Peran</th>
                 <th>Sesi Presensi</th>
                 <th>Waktu Tap</th>
                 <th>Status</th>
@@ -422,7 +444,7 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
             </thead>
             <tbody id="rekap-tbody">
               <tr>
-                <td colspan="7">
+                <td colspan="8">
                   <div class="empty-state">
                     <div class="empty-text">Pilih tanggal untuk melihat rekap</div>
                   </div>
@@ -452,17 +474,19 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
           <table>
             <thead>
               <tr>
-                <th>No</th>
+                <th style="width: 40px;">No</th>
                 <th>Nama Program Kerja / Acara</th>
                 <th>Waktu Pelaksanaan</th>
+                <th>Target Presensi</th>
+                <th>Panitia</th>
                 <th>Total Hadir</th>
                 <th>Status</th>
-                <th>Aksi</th>
+                <th style="width: 170px;">Aksi</th>
               </tr>
             </thead>
             <tbody id="events-tbody">
               <tr>
-                <td colspan="6">
+                <td colspan="8">
                   <div class="empty-state">
                     <div class="empty-text">Memuat data program kerja...</div>
                   </div>
@@ -496,7 +520,27 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
 
     <div class="form-group">
       <label class="form-label">NIM (Nomor Induk Mahasiswa)</label>
-      <input type="text" id="reg-nim" placeholder="Contoh: 2023001">
+      <input type="text" id="reg-nim" placeholder="Contoh: L200220001">
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+      <div class="form-group">
+        <label class="form-label">Kategori Organisasi *</label>
+        <select id="reg-category" style="width: 100%; border: 2px solid #000; padding: 8px 10px; font-weight: 700; background: #fff;">
+          <option value="Anggota" selected>Anggota (Umum)</option>
+          <option value="BPI">BPI (Badan Pengurus Inti)</option>
+          <option value="BPH">BPH (Badan Pengurus Harian)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Divisi / Departemen</label>
+        <input type="text" id="reg-division" placeholder="Contoh: Kaderisasi, Humas, Inti">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Jabatan Formal di Himpunan</label>
+      <input type="text" id="reg-position" placeholder="Contoh: Ketua Umum, Ketua Divisi, Staf">
     </div>
 
     <div class="modal-actions">
@@ -526,6 +570,26 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
     <div class="form-group">
       <label class="form-label">NIM</label>
       <input type="text" id="edit-nim" placeholder="NIM">
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+      <div class="form-group">
+        <label class="form-label">Kategori Organisasi *</label>
+        <select id="edit-category" style="width: 100%; border: 2px solid #000; padding: 8px 10px; font-weight: 700; background: #fff;">
+          <option value="Anggota">Anggota (Umum)</option>
+          <option value="BPI">BPI (Badan Pengurus Inti)</option>
+          <option value="BPH">BPH (Badan Pengurus Harian)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Divisi / Departemen</label>
+        <input type="text" id="edit-division" placeholder="Contoh: Kaderisasi, Humas, Inti">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Jabatan Formal di Himpunan</label>
+      <input type="text" id="edit-position" placeholder="Contoh: Ketua Umum, Ketua Divisi, Staf">
     </div>
 
     <div class="modal-actions">
@@ -562,6 +626,16 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
     </div>
 
     <div class="form-group">
+      <label class="form-label">Target Presensi Acara *</label>
+      <select id="event-target-audience" style="width: 100%; border: 2px solid #000; padding: 8px 10px; font-weight: 700; background: #fff;">
+        <option value="all" selected>Semua Anggota (Umum)</option>
+        <option value="committee_only">Khusus Panitia Acara Ini</option>
+        <option value="bpi_bph">Khusus Pengurus (BPI &amp; BPH Saja)</option>
+      </select>
+      <div class="text-xs text-muted font-mono mt-1">Daftar anggota belum hadir (Alpha) akan otomatis menyesuaikan target ini.</div>
+    </div>
+
+    <div class="form-group">
       <label class="form-label">Keterangan / Deskripsi Singkat</label>
       <input type="text" id="event-desc" placeholder="Contoh: Wajib untuk seluruh pengurus divisi">
     </div>
@@ -577,6 +651,83 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeCreateEventModal()">Batal</button>
       <button class="btn btn-primary" onclick="submitCreateEvent()">Simpan Acara</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Kelola Panitia Program Kerja -->
+<div class="modal-overlay" id="modal-committees">
+  <div class="modal-box" style="max-width: 800px; width: 95%;">
+    <div class="flex items-center justify-between" style="border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 16px;">
+      <div>
+        <div class="modal-title" id="committee-modal-title" style="margin-bottom: 4px;">Susunan Panitia Program Kerja</div>
+        <div class="text-xs font-mono text-muted" id="committee-modal-subtitle">Acara: -</div>
+      </div>
+      <span class="badge badge-committee font-mono" id="committee-count-badge">0 PANITIA</span>
+    </div>
+
+    <!-- Form Tambah Panitia -->
+    <div class="card" style="background: var(--bg-alt); padding: 14px; margin-bottom: 16px; border: 2px solid #000; box-shadow: 2px 2px 0px #000;">
+      <div class="font-bold text-xs uppercase mb-2" style="letter-spacing: 0.05em;">+ Tambah / Tetapkan Panitia Baru</div>
+      <div style="display: grid; grid-template-columns: 2fr 1.5fr 1fr auto; gap: 8px; align-items: end;">
+        <div>
+          <label class="form-label" style="font-size: 11px; margin-bottom: 4px;">Pilih Mahasiswa *</label>
+          <select id="comm-student-select" style="width: 100%; border: 2px solid #000; padding: 6px 8px; font-size: 12px; font-weight: 700; background: #fff;">
+            <option value="">-- Pilih Mahasiswa --</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label" style="font-size: 11px; margin-bottom: 4px;">Jabatan / Role *</label>
+          <input type="text" id="comm-role-input" list="role-suggestions" placeholder="Cth: Ketua Panitia, Sie Acara" style="width: 100%; border: 2px solid #000; padding: 6px 8px; font-size: 12px; font-weight: 700;">
+          <datalist id="role-suggestions">
+            <option value="Ketua Panitia">
+            <option value="Wakil Ketua">
+            <option value="Sekretaris Panitia">
+            <option value="Bendahara Panitia">
+            <option value="Steering Committee (SC)">
+            <option value="Sie Acara">
+            <option value="Sie Perlengkapan">
+            <option value="Sie Konsumsi">
+            <option value="Sie Humas &amp; Publikasi">
+            <option value="Sie Dokumentasi &amp; Medinfo">
+            <option value="Sie Keamanan">
+            <option value="Sie Sponsor &amp; Dana Usaha">
+            <option value="Sie Medis">
+          </datalist>
+        </div>
+        <div>
+          <label class="form-label" style="font-size: 11px; margin-bottom: 4px;">Seksi / Divisi</label>
+          <input type="text" id="comm-division-input" placeholder="Cth: Acara, Humas" style="width: 100%; border: 2px solid #000; padding: 6px 8px; font-size: 12px; font-weight: 700;">
+        </div>
+        <div>
+          <button type="button" class="btn btn-warning btn-sm" onclick="submitAddCommittee()" style="font-weight: 800; border: 2px solid #000; box-shadow: 2px 2px 0px #000; height: 35px;">
+            + Tetapkan
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabel Daftar Panitia -->
+    <div class="table-wrapper" style="max-height: 280px; overflow-y: auto; border: 2px solid #000; margin-bottom: 16px;">
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 40px;">No</th>
+            <th>Nama Mahasiswa</th>
+            <th>NIM</th>
+            <th>Jabatan Panitia</th>
+            <th>Kategori Himpunan</th>
+            <th style="width: 70px;">Aksi</th>
+          </tr>
+        </thead>
+        <tbody id="committee-tbody">
+          <tr><td colspan="6"><div class="empty-state"><div class="empty-text">Belum ada panitia yang ditambahkan</div></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="modal-actions" style="display: flex; justify-content: flex-end;">
+      <button class="btn btn-secondary btn-sm" onclick="closeCommitteesModal()">Tutup</button>
     </div>
   </div>
 </div>

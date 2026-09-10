@@ -35,6 +35,7 @@ function triggerDebouncedDashboard() {
 export let cloudUnknownCards = [];
 export let cloudUsers = {};
 export let cloudLogs = [];
+export let cloudEventCommittees = {};
 
 // Helper untuk decode timestamp dari Firebase Push Key (cth: -O...)
 function getTimestampFromFirebasePushId(id) {
@@ -306,6 +307,20 @@ export function initFirebaseListeners() {
     }
   });
 
+  // 7. Realtime Listener: /event_committees (Susunan Panitia Program Kerja)
+  const committeesRef = ref(db, "event_committees");
+  onValue(committeesRef, (snapshot) => {
+    const data = snapshot.val() || {};
+    cloudEventCommittees = data;
+    window.cloudEventCommittees = data;
+    if (typeof window.renderCommitteesTable === 'function' && window.activeCommitteeEventId) {
+      window.renderCommitteesTable(window.activeCommitteeEventId);
+    }
+    if (typeof window.renderEventsTable === 'function' && window.state && Array.isArray(window.state.events)) {
+      window.renderEventsTable(window.state.events);
+    }
+  });
+
   // Tandai initial load selesai setelah 1.5 detik
   setTimeout(() => {
     isInitialLoad = false;
@@ -313,12 +328,15 @@ export function initFirebaseListeners() {
 }
 
 // Helper untuk mendaftarkan user langsung ke Firebase /users/{uid}
-export async function registerUserToFirebase(uid, name, nim) {
+export async function registerUserToFirebase(uid, name, nim, category = 'Anggota', division = '', position = '') {
   try {
     const userRef = ref(db, `users/${uid}`);
     await set(userRef, {
       name: name,
       nim: nim || "",
+      category: category || "Anggota",
+      division: division || "",
+      position: position || "",
       registered_at: Date.now()
     });
 
@@ -326,7 +344,7 @@ export async function registerUserToFirebase(uid, name, nim) {
     const unknownRef = ref(db, `unknown_cards/${uid}`);
     await set(unknownRef, null);
 
-    console.log(`[Firebase] User ${name} (${uid}) berhasil disimpan ke cloud.`);
+    console.log(`[Firebase] User ${name} (${uid}) [${category}] berhasil disimpan ke cloud.`);
     return true;
   } catch (error) {
     console.error("[Firebase] Gagal menyimpan user ke cloud:", error);
@@ -464,6 +482,9 @@ export async function batchRegisterUsersToFirebase(studentsList) {
         updates[`users/${s.uid}`] = {
           name: s.name,
           nim: s.nim || "",
+          category: s.category || "Anggota",
+          division: s.division || "",
+          position: s.position || "",
           registered_at: now
         };
         updates[`unknown_cards/${s.uid}`] = null;
@@ -474,6 +495,41 @@ export async function batchRegisterUsersToFirebase(studentsList) {
     return true;
   } catch (error) {
     console.error("[Firebase] Batch register error:", error);
+    return false;
+  }
+}
+
+// Helper untuk menambah/mengupdate susunan panitia proker di Firebase
+export async function saveCommitteeToFirebase(eventId, uid, committeeData) {
+  if (!eventId || !uid) return false;
+  try {
+    const commRef = ref(db, `event_committees/${eventId}/${uid}`);
+    await set(commRef, {
+      name: committeeData.name || '',
+      nim: committeeData.nim || '',
+      role: committeeData.role || 'Anggota Panitia',
+      division: committeeData.division || '',
+      category: committeeData.category || 'Anggota',
+      assigned_at: Date.now()
+    });
+    console.log(`[Firebase] Panitia ${uid} (${committeeData.role}) berhasil disimpan untuk acara ${eventId}`);
+    return true;
+  } catch (e) {
+    console.error("[Firebase] Gagal simpan panitia di cloud:", e);
+    return false;
+  }
+}
+
+// Helper untuk menghapus panitia proker dari Firebase
+export async function deleteCommitteeFromFirebase(eventId, uid) {
+  if (!eventId || !uid) return false;
+  try {
+    const commRef = ref(db, `event_committees/${eventId}/${uid}`);
+    await remove(commRef);
+    console.log(`[Firebase] Panitia ${uid} berhasil dihapus dari acara ${eventId}`);
+    return true;
+  } catch (e) {
+    console.error("[Firebase] Gagal hapus panitia di cloud:", e);
     return false;
   }
 }
@@ -508,6 +564,8 @@ export async function toggleLogLateStatus(logId) {
 window.registerUserToFirebase = registerUserToFirebase;
 window.batchRegisterUsersToFirebase = batchRegisterUsersToFirebase;
 window.deleteUserFromFirebase = deleteUserFromFirebase;
+window.saveCommitteeToFirebase = saveCommitteeToFirebase;
+window.deleteCommitteeFromFirebase = deleteCommitteeFromFirebase;
 window.setActiveEventInFirebase = setActiveEventInFirebase;
 window.setActiveSessionInFirebase = setActiveSessionInFirebase;
 window.setSessionStatusInFirebase = setSessionStatusInFirebase;

@@ -13,8 +13,10 @@ if ($method === 'GET') {
         SELECT e.id, e.name, e.description, e.event_date,
                TIME_FORMAT(e.start_time, '%H:%i') AS start_time,
                TIME_FORMAT(e.end_time, '%H:%i') AS end_time,
+               e.target_audience,
                e.is_active, e.created_at,
-               COUNT(DISTINCT a.student_id) AS total_hadir
+               COUNT(DISTINCT a.student_id) AS total_hadir,
+               (SELECT COUNT(*) FROM event_committees WHERE event_id = e.id) AS total_panitia
         FROM events e
         LEFT JOIN attendance a ON a.event_id = e.id
         GROUP BY e.id
@@ -41,13 +43,15 @@ if ($method === 'GET') {
 // --- POST: Tambah acara baru ---
 if ($method === 'POST') {
     checkApiAuth();
-    $body        = json_decode(file_get_contents('php://input'), true) ?: [];
-    $name        = strip_tags(trim($body['name'] ?? ''));
-    $description = strip_tags(trim($body['description'] ?? ''));
-    $eventDate   = trim($body['event_date'] ?? date('Y-m-d'));
-    $startTime   = !empty($body['start_time']) ? trim($body['start_time']) : '08:00:00';
-    $endTime     = !empty($body['end_time']) ? trim($body['end_time']) : null;
-    $isActive    = !empty($body['is_active']) ? 1 : 0;
+    $body           = json_decode(file_get_contents('php://input'), true) ?: [];
+    $name           = strip_tags(trim($body['name'] ?? ''));
+    $description    = strip_tags(trim($body['description'] ?? ''));
+    $eventDate      = trim($body['event_date'] ?? date('Y-m-d'));
+    $startTime      = !empty($body['start_time']) ? trim($body['start_time']) : '08:00:00';
+    $endTime        = !empty($body['end_time']) ? trim($body['end_time']) : null;
+    $targetAudience = trim($body['target_audience'] ?? 'all');
+    if (!in_array($targetAudience, ['all', 'committee_only', 'bpi_bph'])) $targetAudience = 'all';
+    $isActive       = !empty($body['is_active']) ? 1 : 0;
 
     if ($startTime && strlen($startTime) === 5) $startTime .= ':00';
     if ($endTime && strlen($endTime) === 5) $endTime .= ':00';
@@ -61,8 +65,8 @@ if ($method === 'POST') {
         $db->exec("UPDATE events SET is_active = 0");
     }
 
-    $stmt = $db->prepare("INSERT INTO events (name, description, event_date, start_time, end_time, is_active) VALUES (?, ?, ?, ?, ?, ?)");
-    $stmt->execute([$name, $description, $eventDate, $startTime, $endTime, $isActive]);
+    $stmt = $db->prepare("INSERT INTO events (name, description, event_date, start_time, end_time, target_audience, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    $stmt->execute([$name, $description, $eventDate, $startTime, $endTime, $targetAudience, $isActive]);
 
     $newId = (int)$db->lastInsertId();
 
@@ -102,12 +106,14 @@ if ($method === 'PUT') {
     }
 
     // Update detail acara
-    $name        = strip_tags(trim($body['name'] ?? ''));
-    $description = strip_tags(trim($body['description'] ?? ''));
-    $eventDate   = trim($body['event_date'] ?? date('Y-m-d'));
-    $startTime   = !empty($body['start_time']) ? trim($body['start_time']) : '08:00:00';
-    $endTime     = !empty($body['end_time']) ? trim($body['end_time']) : null;
-    $isActive    = !empty($body['is_active']) ? 1 : 0;
+    $name           = strip_tags(trim($body['name'] ?? ''));
+    $description    = strip_tags(trim($body['description'] ?? ''));
+    $eventDate      = trim($body['event_date'] ?? date('Y-m-d'));
+    $startTime      = !empty($body['start_time']) ? trim($body['start_time']) : '08:00:00';
+    $endTime        = !empty($body['end_time']) ? trim($body['end_time']) : null;
+    $targetAudience = trim($body['target_audience'] ?? 'all');
+    if (!in_array($targetAudience, ['all', 'committee_only', 'bpi_bph'])) $targetAudience = 'all';
+    $isActive       = !empty($body['is_active']) ? 1 : 0;
 
     if ($startTime && strlen($startTime) === 5) $startTime .= ':00';
     if ($endTime && strlen($endTime) === 5) $endTime .= ':00';
@@ -120,8 +126,8 @@ if ($method === 'PUT') {
         $db->exec("UPDATE events SET is_active = 0");
     }
 
-    $stmt = $db->prepare("UPDATE events SET name = ?, description = ?, event_date = ?, start_time = ?, end_time = ?, is_active = ? WHERE id = ?");
-    $stmt->execute([$name, $description, $eventDate, $startTime, $endTime, $isActive, $id]);
+    $stmt = $db->prepare("UPDATE events SET name = ?, description = ?, event_date = ?, start_time = ?, end_time = ?, target_audience = ?, is_active = ? WHERE id = ?");
+    $stmt->execute([$name, $description, $eventDate, $startTime, $endTime, $targetAudience, $isActive, $id]);
 
     sendJSON(['success' => true, 'message' => 'Data acara berhasil diperbarui']);
 }

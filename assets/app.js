@@ -65,11 +65,20 @@ const state = {
   events: [],
   activeEvent: null,
   activeSession: { id: 'sesi_1', name: 'Sesi 1 (Datang / Pagi)' },
+  categoryFilter: '', // '' = semua, 'BPI', 'BPH', 'Anggota'
+  currentCommitteeEvent: null, // { id, name }
   totalHadir: 0,
   totalMhs: 0,
   pollInterval: null,
   editingStudent: null,
 };
+
+// Helper warna/badge kategori struktur organisasi HIMA
+function getCategoryBadgeClass(category) {
+  if (category === 'BPI') return 'badge-bpi';
+  if (category === 'BPH') return 'badge-bph';
+  return 'badge-anggota';
+}
 
 // Konfigurasi Sesi Presensi HIMA
 const SESSION_CONFIG = {
@@ -156,12 +165,13 @@ async function toggleSessionStatus() {
 
 // API Endpoint lokal
 const API = {
-  attendance:   'api/attendance.php',
-  students:     'api/students.php',
-  unknownCards: 'api/unknown_cards.php',
-  events:       'api/events.php',
-  admin:        'api/admin.php',
-  export:       'api/export.php',
+  attendance:      'api/attendance.php',
+  students:        'api/students.php',
+  unknownCards:    'api/unknown_cards.php',
+  events:          'api/events.php',
+  eventCommittees: 'api/event_committees.php',
+  admin:           'api/admin.php',
+  export:          'api/export.php',
 };
 
 // Navigation and panel switching
@@ -337,11 +347,30 @@ function renderDashboardTable(records) {
       ? `<button type="button" class="badge badge-warning font-mono font-bold" onclick="toggleLogLateStatus('${r.id}')" style="cursor: pointer; border: 2px solid #000;" title="Klik untuk ubah menjadi Tepat Waktu">TELAT</button>`
       : `<button type="button" class="badge badge-success font-mono font-bold" onclick="toggleLogLateStatus('${r.id}')" style="cursor: pointer; border: 2px solid #000;" title="Klik untuk ubah menjadi Telat">TEPAT WAKTU</button>`;
 
+    // Deteksi Kategori & Kepanitiaan
+    const studentInfo = (state.students || []).find(s => s.uid === r.uid) || (window.cloudUsers && window.cloudUsers[r.uid]) || {};
+    const cat = r.category || studentInfo.category || 'Anggota';
+    const div = r.division || studentInfo.division || '';
+    const pos = r.position || studentInfo.position || '';
+
+    const activeEvId = state.activeEvent?.id;
+    let commInfo = null;
+    if (activeEvId && window.cloudEventCommittees && window.cloudEventCommittees[activeEvId]) {
+      commInfo = window.cloudEventCommittees[activeEvId][r.uid];
+    }
+
     return `
       <tr>
         <td class="font-mono font-bold">${i + 1}</td>
         <td><span class="td-uid font-mono">${escapeHtml(r.uid)}</span></td>
-        <td class="td-name font-bold">${escapeHtml(r.name)}</td>
+        <td class="td-name font-bold">
+          <div>
+            ${escapeHtml(r.name)}
+            <span class="badge ${getCategoryBadgeClass(cat)} text-xs ml-1" style="font-size: 10px; padding: 1px 6px;">${escapeHtml(cat)}</span>
+            ${commInfo ? `<span class="badge badge-committee text-xs ml-1" style="font-size: 10px; padding: 1px 6px;">${escapeHtml(commInfo.role || 'Panitia')}</span>` : ''}
+          </div>
+          ${(pos || div) ? `<div class="text-xs text-muted font-mono mt-0.5">${escapeHtml([pos, div].filter(Boolean).join(' • '))}</div>` : ''}
+        </td>
         <td class="font-mono">${escapeHtml(r.nim || '-')}</td>
         <td class="font-mono"><span class="badge ${getSessionBadgeClass(r.session_id)}">${escapeHtml(formatSessionLabel(r.session_id, r.session_name))}</span></td>
         <td class="font-mono font-bold">${escapeHtml(r.waktu)}</td>
@@ -445,6 +474,13 @@ function openRegisterModal(uid = '') {
   if (input) input.value = uid;
   document.getElementById('reg-name').value = '';
   document.getElementById('reg-nim').value  = '';
+  const catEl = document.getElementById('reg-category');
+  if (catEl) catEl.value = 'Anggota';
+  const divEl = document.getElementById('reg-division');
+  if (divEl) divEl.value = '';
+  const posEl = document.getElementById('reg-position');
+  if (posEl) posEl.value = '';
+
   if (modal) {
     modal.classList.add('active', 'open');
     setTimeout(() => {
@@ -463,16 +499,19 @@ function closeRegisterModal() {
 }
 
 async function submitRegister() {
-  const uid  = document.getElementById('reg-uid').value.trim().toUpperCase();
-  const name = document.getElementById('reg-name').value.trim();
-  const nim  = document.getElementById('reg-nim').value.trim();
+  const uid      = document.getElementById('reg-uid').value.trim().toUpperCase();
+  const name     = document.getElementById('reg-name').value.trim();
+  const nim      = document.getElementById('reg-nim').value.trim();
+  const category = document.getElementById('reg-category')?.value || 'Anggota';
+  const division = document.getElementById('reg-division')?.value.trim() || '';
+  const position = document.getElementById('reg-position')?.value.trim() || '';
 
   if (!uid)  { showToast('UID kartu tidak boleh kosong', 'warning'); return; }
   if (!name) { showToast('Nama mahasiswa wajib diisi', 'warning'); return; }
 
   // 1. Simpan ke Firebase Cloud
   if (typeof window.registerUserToFirebase === 'function') {
-    await window.registerUserToFirebase(uid, name, nim);
+    await window.registerUserToFirebase(uid, name, nim, category, division, position);
   }
 
   // 2. Simpan ke MySQL jika aktif
@@ -480,7 +519,7 @@ async function submitRegister() {
     const res = await fetch(API.students, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uid, name, nim }),
+      body: JSON.stringify({ uid, name, nim, category, division, position }),
     });
     const data = await res.json();
     if (!res.ok || !data.success) {
@@ -493,10 +532,29 @@ async function submitRegister() {
     }
   }
 
-  showToast(`Mahasiswa "${name}" berhasil didaftarkan!`, 'success');
+  showToast(`Mahasiswa "${name}" (${category}) berhasil didaftarkan!`, 'success');
   closeRegisterModal();
   loadUnknownCards();
+  loadStudents();
   loadDashboard();
+}
+
+// Filter Tab Kategori Mahasiswa (BPI / BPH / Anggota)
+function filterStudentsByCategory(category) {
+  state.categoryFilter = category;
+
+  const btnAll     = document.getElementById('filter-btn-all');
+  const btnBpi     = document.getElementById('filter-btn-bpi');
+  const btnBph     = document.getElementById('filter-btn-bph');
+  const btnAnggota = document.getElementById('filter-btn-anggota');
+
+  if (btnAll)     btnAll.classList.toggle('active', category === '');
+  if (btnBpi)     btnBpi.classList.toggle('active', category === 'BPI');
+  if (btnBph)     btnBph.classList.toggle('active', category === 'BPH');
+  if (btnAnggota) btnAnggota.classList.toggle('active', category === 'Anggota');
+
+  const q = document.getElementById('search-students')?.value || '';
+  renderStudentsTable(state.students, q);
 }
 
 // Panel data mahasiswa
@@ -525,6 +583,9 @@ function renderCloudStudents(searchQuery = '') {
     uid: uid,
     name: users[uid].name || '-',
     nim: users[uid].nim || '-',
+    category: users[uid].category || 'Anggota',
+    division: users[uid].division || '',
+    position: users[uid].position || '',
     created_at: users[uid].registered_at ? new Date(users[uid].registered_at).toISOString() : '-'
   }));
 
@@ -534,26 +595,53 @@ function renderCloudStudents(searchQuery = '') {
 
 function renderStudentsTable(students, searchQuery = '') {
   const tbody = document.getElementById('students-tbody');
-  const count = document.getElementById('mhs-count-badge');
-  if (count) count.textContent = `${(students || []).length} MAHASISWA`;
+  const countBadge = document.getElementById('mhs-count-badge');
+  const allList = students || [];
+
+  // Update tab filter counter badges
+  const cAll     = allList.length;
+  const cBpi     = allList.filter(s => s.category === 'BPI').length;
+  const cBph     = allList.filter(s => s.category === 'BPH').length;
+  const cAnggota = allList.filter(s => !s.category || s.category === 'Anggota').length;
+
+  const elAll     = document.getElementById('count-all');
+  const elBpi     = document.getElementById('count-bpi');
+  const elBph     = document.getElementById('count-bph');
+  const elAnggota = document.getElementById('count-anggota');
+
+  if (elAll)     elAll.textContent     = cAll;
+  if (elBpi)     elBpi.textContent     = cBpi;
+  if (elBph)     elBph.textContent     = cBph;
+  if (elAnggota) elAnggota.textContent = cAnggota;
+
+  if (countBadge) countBadge.textContent = `${cAll} MAHASISWA`;
   if (!tbody) return;
 
-  let displayList = students || [];
+  let displayList = allList;
+
+  // 1. Terapkan Filter Kategori Struktur
+  if (state.categoryFilter) {
+    displayList = displayList.filter(s => (s.category || 'Anggota') === state.categoryFilter);
+  }
+
+  // 2. Terapkan Search Query
   if (searchQuery && typeof searchQuery === 'string') {
     const q = searchQuery.toLowerCase().trim();
     displayList = displayList.filter(s =>
-      s.name.toLowerCase().includes(q) ||
+      (s.name && s.name.toLowerCase().includes(q)) ||
       (s.nim && s.nim.toLowerCase().includes(q)) ||
-      s.uid.toLowerCase().includes(q)
+      (s.uid && s.uid.toLowerCase().includes(q)) ||
+      (s.division && s.division.toLowerCase().includes(q)) ||
+      (s.position && s.position.toLowerCase().includes(q))
     );
   }
 
   if (displayList.length === 0) {
     tbody.innerHTML = `
-      <tr><td colspan="6">
+      <tr><td colspan="8">
         <div class="empty-state">
           <div class="empty-text">TIDAK ADA DATA MAHASISWA</div>
-          <div class="empty-sub">Daftarkan mahasiswa baru melalui tab "Tambah Mahasiswa"</div>
+          <div class="empty-sub">Sesuaikan filter kategori atau daftarkan mahasiswa baru melalui tombol "+ Tambah Mahasiswa"</div>
         </div>
       </td></tr>`;
     return;
@@ -566,16 +654,24 @@ function renderStudentsTable(students, searchQuery = '') {
     }
     hadirCount = hadirCount || 0;
 
+    const cat = s.category || 'Anggota';
+    const catBadgeClass = getCategoryBadgeClass(cat);
+
     return `
     <tr>
       <td class="font-mono font-bold">${i + 1}</td>
       <td><span class="td-uid font-mono">${escapeHtml(s.uid)}</span></td>
       <td class="td-name font-bold">${escapeHtml(s.name)}</td>
       <td class="font-mono">${escapeHtml(s.nim || '-')}</td>
+      <td><span class="badge ${catBadgeClass} font-mono font-bold text-xs">${escapeHtml(cat)}</span></td>
+      <td>
+        <div class="font-bold text-xs">${escapeHtml(s.position || '-')}</div>
+        ${s.division ? `<div class="text-xs text-muted font-mono">${escapeHtml(s.division)}</div>` : ''}
+      </td>
       <td class="font-mono font-bold"><span class="badge badge-warning">${hadirCount}x</span></td>
       <td>
         <div class="flex gap-2">
-          <button class="btn btn-secondary btn-sm" onclick="openEditModal('${escapeJsString(s.uid)}', '${escapeJsString(s.name)}', '${escapeJsString(s.nim || '')}', '${escapeJsString(s.id || '')}')">
+          <button class="btn btn-secondary btn-sm" onclick="openEditModal('${escapeJsString(s.uid)}', '${escapeJsString(s.name)}', '${escapeJsString(s.nim || '')}', '${escapeJsString(s.id || '')}', '${escapeJsString(cat)}', '${escapeJsString(s.division || '')}', '${escapeJsString(s.position || '')}')">
             Edit
           </button>
           <button class="btn btn-danger btn-sm" onclick="deleteStudent('${escapeJsString(s.uid)}', '${escapeJsString(s.name)}', '${escapeJsString(s.id || '')}')">
@@ -619,12 +715,20 @@ function searchStudents(query) {
 }
 
 // Modal Edit
-function openEditModal(uid, name, nim, id) {
+function openEditModal(uid, name, nim, id, category = 'Anggota', division = '', position = '') {
   const modal = document.getElementById('modal-edit');
   document.getElementById('edit-uid').value  = uid;
   document.getElementById('edit-name').value = name;
   document.getElementById('edit-nim').value  = nim;
   document.getElementById('edit-id').value   = id;
+
+  const catEl = document.getElementById('edit-category');
+  if (catEl) catEl.value = category || 'Anggota';
+  const divEl = document.getElementById('edit-division');
+  if (divEl) divEl.value = division || '';
+  const posEl = document.getElementById('edit-position');
+  if (posEl) posEl.value = position || '';
+
   if (modal) {
     modal.classList.add('active', 'open');
     setTimeout(() => {
@@ -639,17 +743,20 @@ function closeEditModal() {
 }
 
 async function submitEdit() {
-  const uid   = document.getElementById('edit-uid').value.trim().toUpperCase();
-  const name  = document.getElementById('edit-name').value.trim();
-  const nim   = document.getElementById('edit-nim').value.trim();
-  const rawId = document.getElementById('edit-id')?.value;
-  const id    = parseInt(rawId) || 0;
+  const uid      = document.getElementById('edit-uid').value.trim().toUpperCase();
+  const name     = document.getElementById('edit-name').value.trim();
+  const nim      = document.getElementById('edit-nim').value.trim();
+  const category = document.getElementById('edit-category')?.value || 'Anggota';
+  const division = document.getElementById('edit-division')?.value.trim() || '';
+  const position = document.getElementById('edit-position')?.value.trim() || '';
+  const rawId    = document.getElementById('edit-id')?.value;
+  const id       = parseInt(rawId) || 0;
 
   if (!name) { showToast('Nama mahasiswa tidak boleh kosong', 'warning'); return; }
 
   // 1. Update ke Firebase Cloud
   if (typeof window.registerUserToFirebase === 'function') {
-    await window.registerUserToFirebase(uid, name, nim);
+    await window.registerUserToFirebase(uid, name, nim, category, division, position);
   }
 
   // 2. Update ke MySQL jika aktif
@@ -657,7 +764,7 @@ async function submitEdit() {
     const res = await fetch(API.students, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, uid, name, nim }),
+      body: JSON.stringify({ id, uid, name, nim, category, division, position }),
     });
     const data = await res.json();
     if (!res.ok || !data.success) {
@@ -768,7 +875,7 @@ function renderRekapTable(records, summary) {
 
   if (!records || records.length === 0) {
     tbody.innerHTML = `
-      <tr><td colspan="7">
+      <tr><td colspan="8">
         <div class="empty-state">
           <div class="empty-text">TIDAK ADA DATA PRESENSI PADA TANGGAL / SESI INI</div>
           <div class="empty-sub">Pilih tanggal atau filter sesi lain untuk melihat riwayat kehadiran</div>
@@ -783,12 +890,29 @@ function renderRekapTable(records, summary) {
       ? `<button type="button" class="badge badge-warning font-mono font-bold" onclick="toggleLogLateStatus('${r.id}')" style="cursor: pointer; border: 2px solid #000;" title="Klik untuk ubah menjadi Hadir Tepat Waktu">TELAT</button>`
       : `<button type="button" class="badge badge-success font-mono font-bold" onclick="toggleLogLateStatus('${r.id}')" style="cursor: pointer; border: 2px solid #000;" title="Klik untuk ubah menjadi Telat">HADIR</button>`;
 
+    // Deteksi Kategori & Kepanitiaan
+    const studentInfo = (state.students || []).find(s => s.uid === r.uid) || (window.cloudUsers && window.cloudUsers[r.uid]) || {};
+    const cat = r.category || studentInfo.category || 'Anggota';
+    const pos = r.position || studentInfo.position || '';
+    const div = r.division || studentInfo.division || '';
+
+    // Cek status kepanitiaan acara aktif
+    const activeEvId = state.activeEvent?.id;
+    let commInfo = null;
+    if (activeEvId && window.cloudEventCommittees && window.cloudEventCommittees[activeEvId]) {
+      commInfo = window.cloudEventCommittees[activeEvId][r.uid];
+    }
+
     return `
       <tr>
         <td class="font-mono font-bold">${i + 1}</td>
         <td><span class="td-uid font-mono">${escapeHtml(r.uid)}</span></td>
         <td class="td-name font-bold">${escapeHtml(r.name)}</td>
         <td class="font-mono">${escapeHtml(r.nim || '-')}</td>
+        <td>
+          <span class="badge ${getCategoryBadgeClass(cat)} font-mono font-bold text-xs">${escapeHtml(cat)}</span>
+          ${commInfo ? `<div class="mt-1"><span class="badge badge-committee font-mono text-xs">${escapeHtml(commInfo.role || 'Panitia')}</span></div>` : ((pos || div) ? `<div class="text-xs font-mono text-muted mt-1">${escapeHtml([pos, div].filter(Boolean).join(' • '))}</div>` : '')}
+        </td>
         <td class="font-mono"><span class="badge ${getSessionBadgeClass(r.session_id)}">${escapeHtml(formatSessionLabel(r.session_id, r.session_name))}</span></td>
         <td class="font-mono font-bold">${escapeHtml(r.waktu)}</td>
         <td>${statusBadge}</td>
@@ -1027,16 +1151,26 @@ function exportAttendanceToday(format = 'csv') {
     return;
   }
 
-  const headers = ['No', 'Nama Mahasiswa', 'NIM', 'Status Kehadiran', 'Sesi Presensi', 'Tanggal', 'Jam Tap'];
-  const rows = logsToday.map((r, i) => [
-    i + 1,
-    r.name,
-    r.nim || '-',
-    (r.telat === true || r.telat === 1 || r.telat === 'true') ? 'HADIR (TELAT)' : 'HADIR',
-    formatSessionLabel(r.session_id, r.session_name),
-    r.date || r.tap_date || today,
-    r.waktu
-  ]);
+  const activeEvId = state.activeEvent?.id;
+  const commMap = (activeEvId && window.cloudEventCommittees && window.cloudEventCommittees[activeEvId]) || {};
+
+  const headers = ['No', 'Nama Mahasiswa', 'NIM', 'Kategori Struktur', 'Divisi', 'Jabatan Panitia', 'Status Kehadiran', 'Sesi Presensi', 'Tanggal', 'Jam Tap'];
+  const rows = logsToday.map((r, i) => {
+    const studentInfo = (state.students || []).find(s => s.uid === r.uid) || (window.cloudUsers && window.cloudUsers[r.uid]) || {};
+    const panitia = commMap[r.uid] || {};
+    return [
+      i + 1,
+      r.name,
+      r.nim || '-',
+      r.category || studentInfo.category || 'Anggota',
+      r.division || studentInfo.division || '-',
+      panitia.role || '-',
+      (r.telat === true || r.telat === 1 || r.telat === 'true') ? 'HADIR (TELAT)' : 'HADIR',
+      formatSessionLabel(r.session_id, r.session_name),
+      r.date || r.tap_date || today,
+      r.waktu
+    ];
+  });
 
   const filename = `Presensi_Hari_Ini_${today}`;
   if (format === 'excel' || format === 'xls') {
@@ -1061,16 +1195,26 @@ function exportAttendance(format = 'csv') {
     return;
   }
 
-  const headers = ['No', 'Nama Mahasiswa', 'NIM', 'Status Kehadiran', 'Sesi Presensi', 'Tanggal', 'Jam Tap'];
-  const rows = logsFiltered.map((r, i) => [
-    i + 1,
-    r.name,
-    r.nim || '-',
-    (r.telat === true || r.telat === 1 || r.telat === 'true') ? 'HADIR (TELAT)' : 'HADIR',
-    formatSessionLabel(r.session_id, r.session_name),
-    r.date || r.tap_date || date,
-    r.waktu
-  ]);
+  const activeEvId = state.activeEvent?.id;
+  const commMap = (activeEvId && window.cloudEventCommittees && window.cloudEventCommittees[activeEvId]) || {};
+
+  const headers = ['No', 'Nama Mahasiswa', 'NIM', 'Kategori Struktur', 'Divisi', 'Jabatan Panitia', 'Status Kehadiran', 'Sesi Presensi', 'Tanggal', 'Jam Tap'];
+  const rows = logsFiltered.map((r, i) => {
+    const studentInfo = (state.students || []).find(s => s.uid === r.uid) || (window.cloudUsers && window.cloudUsers[r.uid]) || {};
+    const panitia = commMap[r.uid] || {};
+    return [
+      i + 1,
+      r.name,
+      r.nim || '-',
+      r.category || studentInfo.category || 'Anggota',
+      r.division || studentInfo.division || '-',
+      panitia.role || '-',
+      (r.telat === true || r.telat === 1 || r.telat === 'true') ? 'HADIR (TELAT)' : 'HADIR',
+      formatSessionLabel(r.session_id, r.session_name),
+      r.date || r.tap_date || date,
+      r.waktu
+    ];
+  });
 
   const sessSuffix = sessionFilter ? `_${sessionFilter}` : '';
   const filename = `Rekap_Presensi_${date}${sessSuffix}`;
@@ -1090,16 +1234,21 @@ function exportAllAttendance(format = 'csv') {
     return;
   }
 
-  const headers = ['No', 'Nama Mahasiswa', 'NIM', 'Status Kehadiran', 'Sesi Presensi', 'Tanggal', 'Jam Tap'];
-  const rows = allLogs.map((r, i) => [
-    i + 1,
-    r.name,
-    r.nim || '-',
-    (r.telat === true || r.telat === 1 || r.telat === 'true') ? 'HADIR (TELAT)' : 'HADIR',
-    formatSessionLabel(r.session_id, r.session_name),
-    r.date || r.tap_date || '-',
-    r.waktu
-  ]);
+  const headers = ['No', 'Nama Mahasiswa', 'NIM', 'Kategori Struktur', 'Divisi', 'Status Kehadiran', 'Sesi Presensi', 'Tanggal', 'Jam Tap'];
+  const rows = allLogs.map((r, i) => {
+    const studentInfo = (state.students || []).find(s => s.uid === r.uid) || (window.cloudUsers && window.cloudUsers[r.uid]) || {};
+    return [
+      i + 1,
+      r.name,
+      r.nim || '-',
+      r.category || studentInfo.category || 'Anggota',
+      r.division || studentInfo.division || '-',
+      (r.telat === true || r.telat === 1 || r.telat === 'true') ? 'HADIR (TELAT)' : 'HADIR',
+      formatSessionLabel(r.session_id, r.session_name),
+      r.date || r.tap_date || '-',
+      r.waktu
+    ];
+  });
 
   const filename = `Rekap_Presensi_Keseluruhan_${getLocalDateString()}`;
   if (format === 'excel' || format === 'xls') {
@@ -1118,18 +1267,21 @@ function exportStudents(format = 'csv') {
     return;
   }
 
-  const headers = ['No', 'UID Kartu', 'Nama Mahasiswa', 'NIM', 'Tanggal Terdaftar'];
+  const headers = ['No', 'UID Kartu', 'Nama Mahasiswa', 'NIM', 'Kategori Struktur', 'Divisi', 'Jabatan', 'Tanggal Terdaftar'];
   const rows = students.map((s, i) => [
     i + 1,
     s.uid,
     s.name,
     s.nim || '-',
+    s.category || 'Anggota',
+    s.division || '-',
+    s.position || '-',
     formatDate(s.created_at)
   ]);
 
   const filename = `Daftar_Mahasiswa_${getLocalDateString()}`;
   if (format === 'excel' || format === 'xls') {
-    downloadExcel(filename, 'DAFTAR MAHASISWA TERDAFTAR', getLocalDateString(), headers, rows);
+    downloadExcel(filename, 'DAFTAR MAHASISWA TERDAFTAR (STRUKTUR HIMA)', getLocalDateString(), headers, rows);
   } else {
     downloadCSV(filename, headers, rows);
   }
@@ -1435,7 +1587,7 @@ function renderEventsTable(events) {
 
   if (!events || events.length === 0) {
     tbody.innerHTML = `
-      <tr><td colspan="6">
+      <tr><td colspan="8">
         <div class="empty-state">
           <div class="empty-text">BELUM ADA PROGRAM KERJA / ACARA</div>
           <div class="empty-sub">Buat program kerja baru untuk memisahkan data presensi tiap kegiatan</div>
@@ -1448,6 +1600,22 @@ function renderEventsTable(events) {
     const isActive = ev.is_active == 1;
     const timeStr = formatEventTime(ev.start_time, ev.end_time);
     const totalHadir = calculateEventTotalHadir(ev);
+
+    // Target Audience Badge
+    const targetAud = ev.target_audience || 'all';
+    let targetBadge = '<span class="badge badge-secondary font-mono text-xs">SEMUA ANGGOTA</span>';
+    if (targetAud === 'committee_only') {
+      targetBadge = '<span class="badge badge-committee font-mono text-xs font-bold">PANITIA SAJA</span>';
+    } else if (targetAud === 'bpi_bph') {
+      targetBadge = '<span class="badge badge-bpi font-mono text-xs font-bold">BPI &amp; BPH</span>';
+    }
+
+    // Hitung Panitia
+    let panitiaCount = Number(ev.total_panitia) || 0;
+    if (window.cloudEventCommittees && window.cloudEventCommittees[ev.id]) {
+      panitiaCount = Math.max(panitiaCount, Object.keys(window.cloudEventCommittees[ev.id]).length);
+    }
+
     return `
     <tr class="${isActive ? 'row-active-event' : ''}">
       <td class="font-mono font-bold">${i + 1}</td>
@@ -1459,6 +1627,12 @@ function renderEventsTable(events) {
       <td class="font-mono text-sm">
         <div>${formatDateOnly(ev.event_date)}</div>
         ${timeStr ? `<div class="text-xs font-mono font-bold mt-1" style="color: var(--text-secondary);"><span class="badge badge-outline" style="font-size: 10px; padding: 1px 5px; margin-right: 4px;">WAKTU</span>${timeStr}</div>` : ''}
+      </td>
+      <td>${targetBadge}</td>
+      <td>
+        <button type="button" class="btn btn-xs btn-primary font-mono" onclick="openCommitteesModal(${ev.id}, '${escapeJsString(ev.name)}')" style="font-weight: 800; border: 2px solid #000; box-shadow: 2px 2px 0px #000;">
+          <span class="badge badge-panitia-lead mr-1" style="font-size: 10px; padding: 1px 5px;">${panitiaCount}</span> Kelola
+        </button>
       </td>
       <td class="font-mono font-bold"><span class="badge badge-outline">${totalHadir} Mahasiswa</span></td>
       <td>
@@ -1495,6 +1669,8 @@ function openCreateEventModal() {
   if (startTimeInput) startTimeInput.value = '08:00';
   const endTimeInput = document.getElementById('event-end-time');
   if (endTimeInput) endTimeInput.value = '';
+  const audSelect = document.getElementById('event-target-audience');
+  if (audSelect) audSelect.value = 'all';
   document.getElementById('event-name').value = '';
   document.getElementById('event-desc').value = '';
   if (modal) modal.classList.add('active', 'open');
@@ -1506,12 +1682,13 @@ function closeCreateEventModal() {
 }
 
 async function submitCreateEvent() {
-  const name        = document.getElementById('event-name')?.value.trim();
-  const description = document.getElementById('event-desc')?.value.trim();
-  const event_date  = document.getElementById('event-date')?.value || getLocalDateString();
-  const start_time  = document.getElementById('event-start-time')?.value || '08:00';
-  const end_time    = document.getElementById('event-end-time')?.value || null;
-  const is_active   = document.getElementById('event-active')?.checked ? 1 : 0;
+  const name            = document.getElementById('event-name')?.value.trim();
+  const description     = document.getElementById('event-desc')?.value.trim();
+  const event_date      = document.getElementById('event-date')?.value || getLocalDateString();
+  const start_time      = document.getElementById('event-start-time')?.value || '08:00';
+  const end_time        = document.getElementById('event-end-time')?.value || null;
+  const target_audience = document.getElementById('event-target-audience')?.value || 'all';
+  const is_active       = document.getElementById('event-active')?.checked ? 1 : 0;
 
   if (!name) {
     showToast('Nama program kerja wajib diisi', 'warning');
@@ -1522,7 +1699,7 @@ async function submitCreateEvent() {
     const res = await fetch(API.events, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, description, event_date, start_time, end_time, is_active })
+      body: JSON.stringify({ name, description, event_date, start_time, end_time, target_audience, is_active })
     });
     const data = await res.json();
     if (data.success) {
@@ -1538,6 +1715,7 @@ async function submitCreateEvent() {
           date: event_date,
           start_time,
           end_time,
+          target_audience,
           is_active: 1
         });
       }
@@ -1574,6 +1752,7 @@ async function toggleEventActive(id, activate) {
             date: targetEv.event_date,
             start_time: targetEv.start_time,
             end_time: targetEv.end_time,
+            target_audience: targetEv.target_audience || 'all',
             is_active: 1
           });
         } else {
@@ -1609,11 +1788,12 @@ async function deleteEvent(id) {
     });
     const data = await res.json();
     if (data.success) {
-      showToast('Acara berhasil dihapus', 'success');
+      showToast(`Program kerja "${name}" berhasil dihapus`, 'success');
 
-      // Jika acara yang dihapus sedang aktif, kosongkan di Firebase Cloud
-      if (ev && ev.is_active == 1 && typeof window.setActiveEventInFirebase === 'function') {
-        window.setActiveEventInFirebase(null);
+      if (state.activeEvent && state.activeEvent.id == id) {
+        if (typeof window.setActiveEventInFirebase === 'function') {
+          window.setActiveEventInFirebase(null);
+        }
       }
 
       loadEvents();
@@ -1625,6 +1805,225 @@ async function deleteEvent(id) {
     console.error(e);
     showToast('Terjadi kesalahan saat menghapus acara', 'danger');
   }
+}
+
+// ==============================================================
+// Kelola Susunan Panitia Program Kerja (Modal & Dual-Sync)
+// ==============================================================
+function openCommitteesModal(eventId, eventName = '') {
+  state.currentCommitteeEvent = { id: eventId, name: eventName };
+  const modal = document.getElementById('modal-committees');
+  const title = document.getElementById('committee-modal-title');
+  const subtitle = document.getElementById('committee-modal-subtitle');
+  if (title) title.textContent = 'Susunan Panitia Program Kerja';
+  if (subtitle) subtitle.textContent = `Acara: ${eventName || ('Event #' + eventId)}`;
+
+  populateCommitteeStudentSelect();
+
+  const roleInput = document.getElementById('comm-role-input');
+  if (roleInput) roleInput.value = '';
+  const divInput = document.getElementById('comm-division-input');
+  if (divInput) divInput.value = '';
+
+  if (modal) modal.classList.add('active', 'open');
+
+  loadCommittees(eventId);
+}
+
+function closeCommitteesModal() {
+  const modal = document.getElementById('modal-committees');
+  if (modal) modal.classList.remove('active', 'open');
+  state.currentCommitteeEvent = null;
+  loadEvents();
+}
+
+function populateCommitteeStudentSelect() {
+  const select = document.getElementById('comm-student-select');
+  if (!select) return;
+
+  const students = state.students || [];
+  select.innerHTML = '<option value="">-- Pilih Mahasiswa --</option>' +
+    students.map(s => `
+      <option value="${escapeHtml(s.uid)}" data-id="${escapeHtml(s.id || '')}" data-name="${escapeHtml(s.name)}" data-nim="${escapeHtml(s.nim || '')}" data-category="${escapeHtml(s.category || 'Anggota')}" data-division="${escapeHtml(s.division || '')}">
+        ${escapeHtml(s.name)} (${escapeHtml(s.nim || s.uid)}) [${escapeHtml(s.category || 'Anggota')}]
+      </option>
+    `).join('');
+}
+
+async function loadCommittees(eventId) {
+  const tbody = document.getElementById('committee-tbody');
+  const countBadge = document.getElementById('committee-count-badge');
+
+  if (tbody) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="empty-text">Memuat susunan panitia...</div></div></td></tr>`;
+  }
+
+  // 1. Cek data di Firebase Realtime Database
+  let cloudList = null;
+  if (window.cloudEventCommittees && window.cloudEventCommittees[eventId]) {
+    const raw = window.cloudEventCommittees[eventId];
+    cloudList = Object.keys(raw).map((uid, idx) => ({
+      id: idx + 1,
+      uid,
+      name: raw[uid].name || '-',
+      nim: raw[uid].nim || '-',
+      role: raw[uid].role || 'Panitia',
+      committee_division: raw[uid].division || '',
+      category: raw[uid].category || 'Anggota'
+    }));
+  }
+
+  // 2. Fetch dari MySQL API lokal
+  try {
+    const res = await fetch(`${API.eventCommittees}?event_id=${eventId}`);
+    const data = await res.json();
+    if (data.success && Array.isArray(data.data)) {
+      renderCommitteesTable(data.data, eventId);
+      return;
+    }
+  } catch (e) {
+    console.warn('MySQL committee fetch notice:', e);
+  }
+
+  if (cloudList) {
+    renderCommitteesTable(cloudList, eventId);
+  } else if (tbody) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="empty-text">Belum ada panitia yang ditambahkan</div></div></td></tr>`;
+    if (countBadge) countBadge.textContent = '0 PANITIA';
+  }
+}
+
+function renderCommitteesTable(list, eventId) {
+  const tbody = document.getElementById('committee-tbody');
+  const countBadge = document.getElementById('committee-count-badge');
+  if (countBadge) countBadge.textContent = `${(list || []).length} PANITIA`;
+  if (!tbody) return;
+
+  if (!list || list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="empty-text">Belum ada panitia yang ditambahkan</div></div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = list.map((c, i) => {
+    const isLead = (c.role || '').toLowerCase().includes('ketua');
+    const roleBadgeClass = isLead ? 'badge-panitia-lead' : 'badge-committee';
+
+    return `
+      <tr>
+        <td class="font-mono font-bold">${i + 1}</td>
+        <td class="font-bold">${escapeHtml(c.name)}</td>
+        <td class="font-mono">${escapeHtml(c.nim || '-')}</td>
+        <td>
+          <span class="badge ${roleBadgeClass} font-mono text-xs font-bold">${escapeHtml(c.role)}</span>
+          ${c.committee_division ? `<div class="text-xs font-mono text-muted mt-1">${escapeHtml(c.committee_division)}</div>` : ''}
+        </td>
+        <td>
+          <span class="badge ${getCategoryBadgeClass(c.category)} font-mono text-xs font-bold">${escapeHtml(c.category || 'Anggota')}</span>
+        </td>
+        <td>
+          <button class="btn btn-danger btn-xs" onclick="deleteCommittee(${c.id || 0}, ${eventId}, '${escapeJsString(c.uid)}', '${escapeJsString(c.name)}')">
+            Hapus
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function submitAddCommittee() {
+  if (!state.currentCommitteeEvent) return;
+  const eventId = state.currentCommitteeEvent.id;
+
+  const select = document.getElementById('comm-student-select');
+  const roleInput = document.getElementById('comm-role-input');
+  const divInput = document.getElementById('comm-division-input');
+
+  const uid = select?.value;
+  const role = roleInput?.value.trim();
+  const division = divInput?.value.trim() || '';
+
+  if (!uid) {
+    showToast('Pilih mahasiswa terlebih dahulu', 'warning');
+    return;
+  }
+  if (!role) {
+    showToast('Jabatan / Role panitia wajib diisi', 'warning');
+    return;
+  }
+
+  const selectedOpt = select.options[select.selectedIndex];
+  const name = selectedOpt.getAttribute('data-name') || '';
+  const nim = selectedOpt.getAttribute('data-nim') || '';
+  const category = selectedOpt.getAttribute('data-category') || 'Anggota';
+  const studentId = parseInt(selectedOpt.getAttribute('data-id')) || 0;
+
+  // 1. Simpan ke Firebase Realtime Database
+  if (typeof window.saveCommitteeToFirebase === 'function') {
+    await window.saveCommitteeToFirebase(eventId, uid, {
+      name,
+      nim,
+      role,
+      division,
+      category
+    });
+  }
+
+  // 2. Simpan ke MySQL
+  try {
+    const res = await fetch(API.eventCommittees, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event_id: eventId,
+        student_id: studentId,
+        uid: uid,
+        role: role,
+        division: division
+      })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Gagal menyimpan ke database');
+    }
+  } catch (e) {
+    if (!window.isFirebaseConnected) {
+      showToast(e.message || 'Gagal menetapkan panitia', 'danger');
+      return;
+    }
+  }
+
+  showToast(`${name} berhasil ditetapkan sebagai ${role}!`, 'success');
+  if (roleInput) roleInput.value = '';
+  if (divInput) divInput.value = '';
+  loadCommittees(eventId);
+}
+
+async function deleteCommittee(id, eventId, uid, name) {
+  if (!confirm(`Hapus ${name} dari kepanitiaan acara ini?`)) return;
+
+  // 1. Hapus dari Firebase
+  if (typeof window.deleteCommitteeFromFirebase === 'function') {
+    await window.deleteCommitteeFromFirebase(eventId, uid);
+  }
+
+  // 2. Hapus dari MySQL
+  try {
+    const res = await fetch(`${API.eventCommittees}?id=${id}&event_id=${eventId}&uid=${encodeURIComponent(uid)}`, {
+      method: 'DELETE'
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Gagal menghapus dari database');
+    }
+  } catch (e) {
+    if (!window.isFirebaseConnected) {
+      showToast(e.message || 'Gagal menghapus panitia', 'danger');
+      return;
+    }
+  }
+
+  showToast(`${name} berhasil dihapus dari kepanitiaan`, 'success');
+  loadCommittees(eventId);
 }
 
 // Absent member roster modal
@@ -1639,9 +2038,18 @@ async function openAlphaModal() {
   const todayStr = state.selectedDate || getLocalDateString();
   const sessName = state.activeSession?.name || 'Sesi 1 (Datang / Pagi)';
   const sessId   = state.activeSession?.id   || 'sesi_1';
+  const activeEv = state.activeEvent;
+
+  // Tentukan label target audience
+  let targetDesc = 'Seluruh Anggota';
+  if (activeEv && activeEv.target_audience === 'committee_only') {
+    targetDesc = 'Khusus Panitia Proker';
+  } else if (activeEv && activeEv.target_audience === 'bpi_bph') {
+    targetDesc = 'Khusus BPI & BPH';
+  }
 
   if (titleDate) {
-    titleDate.textContent = `Tanggal: ${todayStr} • ${state.activeEvent?.name || 'Kegiatan Umum'} • [${sessName}]`;
+    titleDate.textContent = `Tanggal: ${todayStr} • ${activeEv?.name || 'Kegiatan Umum'} [${targetDesc}] • ${sessName}`;
   }
 
   // Jika state.students belum dimuat, muat dari Cloud atau MySQL
@@ -1651,7 +2059,10 @@ async function openAlphaModal() {
         id: uid,
         uid: uid,
         name: window.cloudUsers[uid].name || '-',
-        nim: window.cloudUsers[uid].nim || '-'
+        nim: window.cloudUsers[uid].nim || '-',
+        category: window.cloudUsers[uid].category || 'Anggota',
+        division: window.cloudUsers[uid].division || '',
+        position: window.cloudUsers[uid].position || ''
       }));
     } else {
       try {
@@ -1664,8 +2075,24 @@ async function openAlphaModal() {
     }
   }
 
-  // Kumpulkan semua mahasiswa terdaftar
   const allStudents = state.students || [];
+
+  // Tentukan Target Pool berdasarkan Target Audience dari Acara Aktif
+  let targetPool = allStudents.filter(s => s.is_active === undefined || s.is_active == 1);
+
+  if (activeEv && activeEv.target_audience === 'committee_only') {
+    // Hanya panitia acara ini
+    let commUids = new Set();
+    if (window.cloudEventCommittees && window.cloudEventCommittees[activeEv.id]) {
+      Object.keys(window.cloudEventCommittees[activeEv.id]).forEach(u => commUids.add(u));
+    }
+    if (commUids.size > 0) {
+      targetPool = targetPool.filter(s => commUids.has(s.uid));
+    }
+  } else if (activeEv && activeEv.target_audience === 'bpi_bph') {
+    // Hanya BPI & BPH
+    targetPool = targetPool.filter(s => s.category === 'BPI' || s.category === 'BPH');
+  }
 
   // Kumpulkan UID yang sudah hadir hari ini pada SESI AKTIF
   const presentUids = new Set();
@@ -1676,8 +2103,8 @@ async function openAlphaModal() {
     }
   });
 
-  // Cari yang belum hadir pada sesi aktif ini (hanya mahasiswa yang berstatus aktif)
-  currentAbsentStudents = allStudents.filter(s => (s.is_active === undefined || s.is_active == 1) && !presentUids.has(s.uid));
+  // Cari yang belum hadir pada target pool
+  currentAbsentStudents = targetPool.filter(s => !presentUids.has(s.uid));
 
   if (countBadge) countBadge.textContent = `${currentAbsentStudents.length} ANGGOTA`;
 
@@ -1687,19 +2114,27 @@ async function openAlphaModal() {
     tbody.innerHTML = `
       <tr><td colspan="4">
         <div class="empty-state">
-          <div class="empty-text" style="color: var(--color-green);">SEMUA ANGGOTA TELAH HADIR PADA SESI INI!</div>
-          <div class="empty-sub">Tingkat kehadiran mencapai 100% untuk ${escapeHtml(sessName)}.</div>
+          <div class="empty-text" style="color: var(--color-green);">SEMUA ANGGOTA TARGET TELAH HADIR PADA SESI INI!</div>
+          <div class="empty-sub">Tingkat kehadiran mencapai 100% untuk ${escapeHtml(sessName)} (${escapeHtml(targetDesc)}).</div>
         </div>
       </td></tr>`;
   } else {
-    tbody.innerHTML = currentAbsentStudents.map((s, i) => `
+    tbody.innerHTML = currentAbsentStudents.map((s, i) => {
+      const cat = s.category || 'Anggota';
+      return `
       <tr>
         <td class="font-mono font-bold">${i + 1}</td>
-        <td class="font-bold">${escapeHtml(s.name)}</td>
+        <td>
+          <div class="font-bold">${escapeHtml(s.name)}</div>
+          <div class="flex items-center gap-1 mt-1">
+            <span class="badge ${getCategoryBadgeClass(cat)} text-xs" style="font-size: 10px; padding: 1px 5px;">${escapeHtml(cat)}</span>
+            ${s.division ? `<span class="text-xs text-muted font-mono">${escapeHtml(s.division)}</span>` : ''}
+          </div>
+        </td>
         <td class="font-mono">${escapeHtml(s.nim || '-')}</td>
         <td class="font-mono"><span class="td-uid">${escapeHtml(s.uid)}</span></td>
       </tr>
-    `).join('');
+    `}).join('');
   }
 
   if (modal) modal.classList.add('active', 'open');
@@ -1716,23 +2151,49 @@ function copyAlphaListToWhatsApp() {
     return;
   }
 
-  const eventName = state.activeEvent?.name || 'Kegiatan HIMA Umum';
+  const activeEv  = state.activeEvent;
+  const eventName = activeEv?.name || 'Kegiatan HIMA Umum';
   const sessName  = state.activeSession?.name || 'Sesi 1';
   const dateStr   = state.selectedDate || getLocalDateString();
 
-  let text = `*DAFTAR ANGGOTA BELUM PRESENSI*\n`;
+  let targetDesc = 'Seluruh Anggota';
+  if (activeEv?.target_audience === 'committee_only') targetDesc = 'Khusus Panitia Proker';
+  else if (activeEv?.target_audience === 'bpi_bph') targetDesc = 'Khusus BPI & BPH';
+
+  let text = `*DAFTAR ANGGOTA BELUM PRESENSI (ALPHA)*\n`;
   text += `Acara: ${eventName}\n`;
+  text += `Target: ${targetDesc}\n`;
   text += `Sesi: ${sessName}\n`;
   text += `Tanggal: ${dateStr}\n`;
   text += `Total Belum Hadir: ${currentAbsentStudents.length} Orang\n\n`;
   text += `----------------------------------------\n`;
 
-  currentAbsentStudents.forEach((s, i) => {
-    text += `${i + 1}. ${s.name} (NIM: ${s.nim || '-'})\n`;
+  // Kelompokkan berdasarkan Kategori Struktur (BPI / BPH / Anggota)
+  const grouped = {
+    'BPI': [],
+    'BPH': [],
+    'Anggota': []
+  };
+
+  currentAbsentStudents.forEach(s => {
+    const cat = s.category || 'Anggota';
+    if (grouped[cat]) grouped[cat].push(s);
+    else grouped['Anggota'].push(s);
   });
 
-  text += `----------------------------------------\n`;
-  text += `Diharapkan segera melakukan presensi kehadiran di meja registrasi. Terima kasih.`;
+  let counter = 1;
+  ['BPI', 'BPH', 'Anggota'].forEach(cat => {
+    if (grouped[cat].length > 0) {
+      text += `\n*== ${cat.toUpperCase()} (${grouped[cat].length} Orang) ==*\n`;
+      grouped[cat].forEach(s => {
+        const extra = [s.position, s.division].filter(Boolean).join(', ');
+        text += `${counter++}. ${s.name} (${s.nim || '-'})${extra ? ' - ' + extra : ''}\n`;
+      });
+    }
+  });
+
+  text += `\n----------------------------------------\n`;
+  text += `Mohon yang namanya tercantum segera melakukan presensi kehadiran di meja registrasi. Terima kasih.`;
 
   const fallbackCopy = (val) => {
     const ta = document.createElement('textarea');
@@ -1811,7 +2272,7 @@ function handleImportFile(event) {
 
       // Normalisasi kolom
       importedRowsCache = json.map(row => {
-        let uid = '', name = '', nim = '';
+        let uid = '', name = '', nim = '', category = 'Anggota', division = '', position = '';
         for (const k of Object.keys(row)) {
           const lk = k.toLowerCase().trim();
           if (lk.includes('uid') || lk.includes('rfid') || lk.includes('kartu')) {
@@ -1820,9 +2281,18 @@ function handleImportFile(event) {
             name = String(row[k]).trim();
           } else if (lk.includes('nim') || lk.includes('npm') || lk.includes('nrp')) {
             nim = String(row[k]).trim();
+          } else if (lk.includes('kategori') || lk.includes('category') || lk.includes('struktur')) {
+            const val = String(row[k]).trim();
+            if (/bpi/i.test(val)) category = 'BPI';
+            else if (/bph/i.test(val)) category = 'BPH';
+            else category = 'Anggota';
+          } else if (lk.includes('divisi') || lk.includes('bidang') || lk.includes('departemen')) {
+            division = String(row[k]).trim();
+          } else if (lk.includes('jabatan') || lk.includes('posisi') || lk.includes('position')) {
+            position = String(row[k]).trim();
           }
         }
-        return { uid, name, nim };
+        return { uid, name, nim, category, division, position };
       }).filter(r => r.name && r.uid);
 
       renderImportPreview(importedRowsCache);
@@ -1859,7 +2329,10 @@ function renderImportPreview(rows) {
     <tr>
       <td class="font-mono font-bold">${i + 1}</td>
       <td class="font-mono"><span class="td-uid">${escapeHtml(r.uid)}</span></td>
-      <td class="font-bold">${escapeHtml(r.name)}</td>
+      <td class="font-bold">
+        ${escapeHtml(r.name)}
+        <span class="badge ${getCategoryBadgeClass(r.category)} text-xs ml-1" style="font-size: 10px; padding: 1px 5px;">${escapeHtml(r.category)}</span>
+      </td>
       <td class="font-mono">${escapeHtml(r.nim || '-')}</td>
     </tr>
   `).join('');
@@ -1893,7 +2366,7 @@ async function submitBatchImport() {
     } else if (typeof window.registerUserToFirebase === 'function' && window.isFirebaseConnected) {
       for (const item of importedRowsCache) {
         try {
-          await window.registerUserToFirebase(item.uid, item.name, item.nim);
+          await window.registerUserToFirebase(item.uid, item.name, item.nim, item.category, item.division, item.position);
         } catch (e) {}
       }
     }
@@ -2005,6 +2478,7 @@ document.addEventListener('DOMContentLoaded', () => {
       closeRegisterModal();
       closeEditModal();
       closeCreateEventModal();
+      closeCommitteesModal();
       closeAlphaModal();
       closeImportModal();
       closeChangePasswordModal();
@@ -2018,6 +2492,7 @@ document.addEventListener('DOMContentLoaded', () => {
         closeRegisterModal();
         closeEditModal();
         closeCreateEventModal();
+        closeCommitteesModal();
         closeAlphaModal();
         closeImportModal();
         closeChangePasswordModal();
@@ -2045,6 +2520,8 @@ document.addEventListener('DOMContentLoaded', () => {
   window.renderDashboardTable = renderDashboardTable;
   window.renderStudentsTable = renderStudentsTable;
   window.renderCloudStudents = renderCloudStudents;
+  window.filterStudentsByCategory = filterStudentsByCategory;
+  window.getCategoryBadgeClass = getCategoryBadgeClass;
   window.openRegisterModal = openRegisterModal;
   window.closeRegisterModal = closeRegisterModal;
   window.submitRegister = submitRegister;
@@ -2061,6 +2538,13 @@ document.addEventListener('DOMContentLoaded', () => {
   window.setActiveEvent = setActiveEvent;
   window.toggleEventActive = toggleEventActive;
   window.deleteEvent = deleteEvent;
+  window.openCommitteesModal = openCommitteesModal;
+  window.closeCommitteesModal = closeCommitteesModal;
+  window.populateCommitteeStudentSelect = populateCommitteeStudentSelect;
+  window.loadCommittees = loadCommittees;
+  window.renderCommitteesTable = renderCommitteesTable;
+  window.submitAddCommittee = submitAddCommittee;
+  window.deleteCommittee = deleteCommittee;
   window.openAlphaModal = openAlphaModal;
   window.closeAlphaModal = closeAlphaModal;
   window.copyAlphaListToWhatsApp = copyAlphaListToWhatsApp;

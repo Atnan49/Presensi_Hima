@@ -6,11 +6,16 @@ CREATE TABLE IF NOT EXISTS `students` (
   `uid` VARCHAR(50) NOT NULL COMMENT 'UID kartu RFID/NFC',
   `name` VARCHAR(100) NOT NULL COMMENT 'Nama mahasiswa',
   `nim` VARCHAR(20) DEFAULT NULL COMMENT 'Nomor Induk Mahasiswa',
+  `category` ENUM('BPI', 'BPH', 'Anggota') NOT NULL DEFAULT 'Anggota' COMMENT 'Tingkat kepengurusan',
+  `division` VARCHAR(100) DEFAULT NULL COMMENT 'Divisi/Departemen (cth: Inti, Kaderisasi, Kominfo, Humas)',
+  `position` VARCHAR(100) DEFAULT NULL COMMENT 'Jabatan formal (cth: Ketua Umum, Ketua Divisi, Staf)',
   `is_active` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1=aktif, 0=nonaktif',
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uid` (`uid`)
+  UNIQUE KEY `uid` (`uid`),
+  KEY `idx_category` (`category`),
+  KEY `idx_division` (`division`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `events` (
@@ -20,13 +25,29 @@ CREATE TABLE IF NOT EXISTS `events` (
   `event_date` DATE NOT NULL COMMENT 'Tanggal pelaksanaan',
   `start_time` TIME NULL DEFAULT '08:00:00' COMMENT 'Jam mulai acara (WIB)',
   `end_time` TIME NULL DEFAULT NULL COMMENT 'Jam selesai acara (WIB)',
+  `target_audience` ENUM('all', 'committee_only', 'bpi_bph') NOT NULL DEFAULT 'all' COMMENT 'Target presensi acara',
   `is_active` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=sedang berlangsung, 0=nonaktif',
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-INSERT INTO `events` (`id`, `name`, `description`, `event_date`, `is_active`) VALUES
-(1, 'Kegiatan HIMA Umum', 'Presensi kegiatan reguler / program kerja HIMA', CURDATE(), 1)
+CREATE TABLE IF NOT EXISTS `event_committees` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `event_id` INT(11) NOT NULL COMMENT 'Relasi ke events.id',
+  `student_id` INT(11) NOT NULL COMMENT 'Relasi ke students.id',
+  `role` VARCHAR(100) NOT NULL COMMENT 'Jabatan panitia: Ketua Panitia, Sekretaris, Bendahara, Sie Acara, dll',
+  `division` VARCHAR(100) DEFAULT NULL COMMENT 'Sie / Seksi panitia (Acara, Perlengkapan, Konsumsi, dll)',
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_event_student` (`event_id`, `student_id`),
+  KEY `idx_event_comm` (`event_id`),
+  KEY `idx_student_comm` (`student_id`),
+  CONSTRAINT `fk_comm_event` FOREIGN KEY (`event_id`) REFERENCES `events` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_comm_student` FOREIGN KEY (`student_id`) REFERENCES `students` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT INTO `events` (`id`, `name`, `description`, `event_date`, `target_audience`, `is_active`) VALUES
+(1, 'Kegiatan HIMA Umum', 'Presensi kegiatan reguler / program kerja HIMA', CURDATE(), 'all', 1)
 ON DUPLICATE KEY UPDATE `name` = `name`;
 
 CREATE TABLE IF NOT EXISTS `attendance` (

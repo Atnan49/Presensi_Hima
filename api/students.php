@@ -10,14 +10,35 @@ $method = $_SERVER['REQUEST_METHOD'];
 // --- GET: Ambil semua data mahasiswa ---
 if ($method === 'GET') {
     $search = isset($_GET['search']) ? '%' . trim($_GET['search']) . '%' : '%';
-    $stmt   = $db->prepare("
-        SELECT s.id, s.uid, s.name, s.nim, s.is_active, s.created_at,
+    $category = isset($_GET['category']) ? trim($_GET['category']) : '';
+    $division = isset($_GET['division']) ? trim($_GET['division']) : '';
+
+    $sql = "
+        SELECT s.id, s.uid, s.name, s.nim, s.category, s.division, s.position, s.is_active, s.created_at,
                (SELECT COUNT(*) FROM attendance WHERE student_id = s.id) AS total_hadir
         FROM students s
-        WHERE s.name LIKE ? OR s.nim LIKE ? OR s.uid LIKE ?
-        ORDER BY s.name ASC
-    ");
-    $stmt->execute([$search, $search, $search]);
+        WHERE (s.name LIKE ? OR s.nim LIKE ? OR s.uid LIKE ?)
+    ";
+    $params = [$search, $search, $search];
+
+    if (!empty($category) && in_array($category, ['BPI', 'BPH', 'Anggota'])) {
+        $sql .= " AND s.category = ?";
+        $params[] = $category;
+    }
+    if (!empty($division)) {
+        $sql .= " AND s.division = ?";
+        $params[] = $division;
+    }
+
+    $sql .= " ORDER BY 
+        CASE s.category
+            WHEN 'BPI' THEN 1
+            WHEN 'BPH' THEN 2
+            ELSE 3
+        END ASC, s.division ASC, s.name ASC";
+
+    $stmt = $db->prepare($sql);
+    $stmt->execute($params);
     $students = $stmt->fetchAll();
     sendJSON(['success' => true, 'data' => $students]);
 }
@@ -34,9 +55,15 @@ if ($method === 'POST') {
         $db->beginTransaction();
         try {
             $stmtUpsert = $db->prepare("
-                INSERT INTO students (uid, name, nim, is_active)
-                VALUES (?, ?, ?, 1)
-                ON DUPLICATE KEY UPDATE name = VALUES(name), nim = VALUES(nim), is_active = 1
+                INSERT INTO students (uid, name, nim, category, division, position, is_active)
+                VALUES (?, ?, ?, ?, ?, ?, 1)
+                ON DUPLICATE KEY UPDATE 
+                    name = VALUES(name), 
+                    nim = VALUES(nim), 
+                    category = VALUES(category),
+                    division = VALUES(division),
+                    position = VALUES(position),
+                    is_active = 1
             ");
             $stmtDelUnknown = $db->prepare("DELETE FROM unknown_cards WHERE uid = ?");
 
@@ -44,8 +71,13 @@ if ($method === 'POST') {
                 $u = strtoupper(trim($item['uid'] ?? ''));
                 $n = strip_tags(trim($item['name'] ?? ''));
                 $m = strip_tags(trim($item['nim'] ?? ''));
+                $cat = trim($item['category'] ?? 'Anggota');
+                if (!in_array($cat, ['BPI', 'BPH', 'Anggota'])) $cat = 'Anggota';
+                $div = strip_tags(trim($item['division'] ?? ''));
+                $pos = strip_tags(trim($item['position'] ?? ''));
+
                 if (!empty($u) && !empty($n)) {
-                    $stmtUpsert->execute([$u, $n, $m]);
+                    $stmtUpsert->execute([$u, $n, $m, $cat, $div, $pos]);
                     $stmtDelUnknown->execute([$u]);
                     $inserted++;
                 }
@@ -62,9 +94,13 @@ if ($method === 'POST') {
         }
     }
 
-    $uid  = strtoupper(trim($body['uid'] ?? ''));
-    $name = strip_tags(trim($body['name'] ?? ''));
-    $nim  = strip_tags(trim($body['nim'] ?? ''));
+    $uid      = strtoupper(trim($body['uid'] ?? ''));
+    $name     = strip_tags(trim($body['name'] ?? ''));
+    $nim      = strip_tags(trim($body['nim'] ?? ''));
+    $category = trim($body['category'] ?? 'Anggota');
+    if (!in_array($category, ['BPI', 'BPH', 'Anggota'])) $category = 'Anggota';
+    $division = strip_tags(trim($body['division'] ?? ''));
+    $position = strip_tags(trim($body['position'] ?? ''));
 
     if (empty($uid) || empty($name)) {
         sendJSON(['success' => false, 'message' => 'UID dan nama wajib diisi'], 400);
@@ -77,8 +113,8 @@ if ($method === 'POST') {
         sendJSON(['success' => false, 'message' => 'UID sudah terdaftar'], 409);
     }
 
-    $db->prepare("INSERT INTO students (uid, name, nim) VALUES (?, ?, ?)")
-       ->execute([$uid, $name, $nim]);
+    $db->prepare("INSERT INTO students (uid, name, nim, category, division, position) VALUES (?, ?, ?, ?, ?, ?)")
+       ->execute([$uid, $name, $nim, $category, $division, $position]);
 
     // Hapus dari unknown_cards jika ada
     $db->prepare("DELETE FROM unknown_cards WHERE uid = ?")->execute([$uid]);
@@ -93,20 +129,24 @@ if ($method === 'POST') {
 // --- PUT: Update data mahasiswa ---
 if ($method === 'PUT') {
     checkApiAuth();
-    $body = json_decode(file_get_contents('php://input'), true);
-    $id   = (int)($body['id'] ?? 0);
-    $name = strip_tags(trim($body['name'] ?? ''));
-    $nim  = strip_tags(trim($body['nim'] ?? ''));
-    $uid  = strtoupper(trim($body['uid'] ?? ''));
-    $active = isset($body['is_active']) ? (int)$body['is_active'] : 1;
+    $body     = json_decode(file_get_contents('php://input'), true);
+    $id       = (int)($body['id'] ?? 0);
+    $name     = strip_tags(trim($body['name'] ?? ''));
+    $nim      = strip_tags(trim($body['nim'] ?? ''));
+    $uid      = strtoupper(trim($body['uid'] ?? ''));
+    $category = trim($body['category'] ?? 'Anggota');
+    if (!in_array($category, ['BPI', 'BPH', 'Anggota'])) $category = 'Anggota';
+    $division = strip_tags(trim($body['division'] ?? ''));
+    $position = strip_tags(trim($body['position'] ?? ''));
+    $active   = isset($body['is_active']) ? (int)$body['is_active'] : 1;
 
     if (empty($name)) {
         sendJSON(['success' => false, 'message' => 'Nama mahasiswa wajib diisi'], 400);
     }
 
     if ($id > 0) {
-        $db->prepare("UPDATE students SET name=?, nim=?, uid=?, is_active=? WHERE id=?")
-           ->execute([$name, $nim, $uid, $active, $id]);
+        $db->prepare("UPDATE students SET name=?, nim=?, uid=?, category=?, division=?, position=?, is_active=? WHERE id=?")
+           ->execute([$name, $nim, $uid, $category, $division, $position, $active, $id]);
     } elseif (!empty($uid)) {
         // Fallback update berdasarkan UID jika ID tidak ada (misal dari Cloud Firebase)
         $check = $db->prepare("SELECT id FROM students WHERE uid = ?");
@@ -114,12 +154,12 @@ if ($method === 'PUT') {
         $existing = $check->fetch();
 
         if ($existing) {
-            $db->prepare("UPDATE students SET name=?, nim=?, is_active=? WHERE uid=?")
-               ->execute([$name, $nim, $active, $uid]);
+            $db->prepare("UPDATE students SET name=?, nim=?, category=?, division=?, position=?, is_active=? WHERE uid=?")
+               ->execute([$name, $nim, $category, $division, $position, $active, $uid]);
         } else {
             // Jika belum ada di MySQL, insert otomatis
-            $db->prepare("INSERT INTO students (uid, name, nim, is_active) VALUES (?, ?, ?, ?)")
-               ->execute([$uid, $name, $nim, $active]);
+            $db->prepare("INSERT INTO students (uid, name, nim, category, division, position, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)")
+               ->execute([$uid, $name, $nim, $category, $division, $position, $active]);
         }
     } else {
         sendJSON(['success' => false, 'message' => 'ID atau UID mahasiswa wajib diisi'], 400);

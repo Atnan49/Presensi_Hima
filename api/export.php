@@ -29,12 +29,17 @@ function sanitizeCsvFormula($val) {
 // --- EXPORT DAFTAR MAHASISWA ---
 if ($type === 'students') {
     $stmt = $db->query("
-        SELECT s.uid, s.name, s.nim,
+        SELECT s.uid, s.name, s.nim, s.category, s.division, s.position,
                (SELECT COUNT(*) FROM attendance WHERE student_id = s.id) AS total_hadir,
                s.created_at
         FROM students s
         WHERE s.is_active = 1
-        ORDER BY s.name ASC
+        ORDER BY 
+            CASE s.category
+                WHEN 'BPI' THEN 1
+                WHEN 'BPH' THEN 2
+                ELSE 3
+            END ASC, s.division ASC, s.name ASC
     ");
     $rows = $stmt->fetchAll();
 
@@ -49,13 +54,16 @@ if ($type === 'students') {
         fputcsv($out, ['# TOTAL: ' . count($rows) . ' Mahasiswa']);
         fputcsv($out, ['# WAKTU CETAK: ' . date('d/m/Y H:i:s')]);
         fputcsv($out, ['']);
-        fputcsv($out, ['NO', 'UID KARTU', 'NAMA MAHASISWA', 'NIM', 'TOTAL HADIR', 'TERDAFTAR SEJAK']);
+        fputcsv($out, ['NO', 'UID KARTU', 'NAMA MAHASISWA', 'NIM', 'KATEGORI', 'DIVISI', 'JABATAN', 'TOTAL HADIR', 'TERDAFTAR SEJAK']);
         foreach ($rows as $i => $r) {
             fputcsv($out, [
                 $i + 1,
                 sanitizeCsvFormula($r['uid']),
                 sanitizeCsvFormula($r['name']),
                 sanitizeCsvFormula($r['nim'] ?: '-'),
+                sanitizeCsvFormula($r['category'] ?: 'Anggota'),
+                sanitizeCsvFormula($r['division'] ?: '-'),
+                sanitizeCsvFormula($r['position'] ?: '-'),
                 $r['total_hadir'] . 'x',
                 sanitizeCsvFormula($r['created_at'])
             ]);
@@ -150,12 +158,14 @@ $sessionId = trim($_GET['session_id'] ?? '');
 
 if ($dateAll) {
     $sql = "
-        SELECT s.uid, s.name, s.nim,
+        SELECT s.uid, s.name, s.nim, s.category, s.division, s.position,
+               COALESCE(ec.role, '-') AS committee_role,
                COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
                DATE_FORMAT(a.tap_time, '%d/%m/%Y') AS tanggal,
                DATE_FORMAT(a.tap_time, '%H:%i') AS jam
         FROM attendance a
         JOIN students s ON s.id = a.student_id
+        LEFT JOIN event_committees ec ON ec.event_id = a.event_id AND ec.student_id = s.id
     ";
     $params = [];
     if (!empty($sessionId)) {
@@ -170,12 +180,14 @@ if ($dateAll) {
     $subtitle     = 'Semua Riwayat Kehadiran Mahasiswa' . (!empty($sessionId) ? " (Filter: {$sessionId})" : '');
 } else {
     $sql = "
-        SELECT s.uid, s.name, s.nim,
+        SELECT s.uid, s.name, s.nim, s.category, s.division, s.position,
+               COALESCE(ec.role, '-') AS committee_role,
                COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
                DATE_FORMAT(a.tap_time, '%d/%m/%Y') AS tanggal,
                DATE_FORMAT(a.tap_time, '%H:%i') AS jam
         FROM attendance a
         JOIN students s ON s.id = a.student_id
+        LEFT JOIN event_committees ec ON ec.event_id = a.event_id AND ec.student_id = s.id
         WHERE a.tap_date = ?
     ";
     $params = [$date];
@@ -205,13 +217,16 @@ if ($format === 'csv') {
     fputcsv($out, ['# TOTAL HADIR: ' . count($rows) . ' Mahasiswa']);
     fputcsv($out, ['# WAKTU CETAK: ' . date('d/m/Y H:i:s')]);
     fputcsv($out, ['']);
-    fputcsv($out, ['NO', 'NAMA MAHASISWA', 'NIM', 'STATUS KEHADIRAN', 'SESI PRESENSI', 'TANGGAL', 'JAM TAP']);
+    fputcsv($out, ['NO', 'NAMA MAHASISWA', 'NIM', 'KATEGORI', 'DIVISI', 'JABATAN PANITIA', 'STATUS KEHADIRAN', 'SESI PRESENSI', 'TANGGAL', 'JAM TAP']);
     foreach ($rows as $i => $r) {
         $isTelat = !empty($r['telat']);
         fputcsv($out, [
             $i + 1,
             sanitizeCsvFormula($r['name']),
             sanitizeCsvFormula($r['nim'] ?: '-'),
+            sanitizeCsvFormula($r['category'] ?: 'Anggota'),
+            sanitizeCsvFormula($r['division'] ?: '-'),
+            sanitizeCsvFormula($r['committee_role'] ?: '-'),
             $isTelat ? 'HADIR (TELAT)' : 'HADIR',
             sanitizeCsvFormula($r['session_name']),
             sanitizeCsvFormula($r['tanggal']),

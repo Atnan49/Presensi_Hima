@@ -988,6 +988,41 @@ td:last-child {
   box-shadow: none;
 }
 
+.badge-bpi {
+  background: #f0abfc;
+  color: #000000;
+  border: 2px solid #000000;
+  box-shadow: 1px 1px 0px #000000;
+}
+
+.badge-bph {
+  background: #67e8f9;
+  color: #000000;
+  border: 2px solid #000000;
+  box-shadow: 1px 1px 0px #000000;
+}
+
+.badge-anggota {
+  background: #fef08a;
+  color: #000000;
+  border: 2px solid #000000;
+  box-shadow: 1px 1px 0px #000000;
+}
+
+.badge-committee {
+  background: #ddd6fe;
+  color: #000000;
+  border: 2px solid #000000;
+  box-shadow: 1px 1px 0px #000000;
+}
+
+.badge-panitia-lead {
+  background: #fed7aa;
+  color: #000000;
+  border: 2px solid #000000;
+  box-shadow: 1px 1px 0px #000000;
+}
+
 /* ============================================================
    FORMS & INPUTS
    ============================================================ */
