@@ -334,8 +334,8 @@ function renderDashboardTable(records) {
   tbody.innerHTML = records.map((r, i) => {
     const isLate = r.telat === true || r.telat === 1 || r.telat === 'true';
     const statusBadge = isLate
-      ? '<span class="badge badge-warning font-mono font-bold">TELAT</span>'
-      : '<span class="badge badge-success font-mono font-bold">TEPAT WAKTU</span>';
+      ? `<button type="button" class="badge badge-warning font-mono font-bold" onclick="toggleLogLateStatus('${r.id}')" style="cursor: pointer; border: 2px solid #000;" title="Klik untuk ubah menjadi Tepat Waktu">TELAT</button>`
+      : `<button type="button" class="badge badge-success font-mono font-bold" onclick="toggleLogLateStatus('${r.id}')" style="cursor: pointer; border: 2px solid #000;" title="Klik untuk ubah menjadi Telat">TEPAT WAKTU</button>`;
 
     return `
       <tr>
@@ -773,8 +773,8 @@ function renderRekapTable(records, summary) {
   tbody.innerHTML = records.map((r, i) => {
     const isLate = r.telat === true || r.telat === 1 || r.telat === 'true';
     const statusBadge = isLate
-      ? '<span class="badge badge-warning font-mono font-bold">TELAT</span>'
-      : '<span class="badge badge-success font-mono font-bold">HADIR</span>';
+      ? `<button type="button" class="badge badge-warning font-mono font-bold" onclick="toggleLogLateStatus('${r.id}')" style="cursor: pointer; border: 2px solid #000;" title="Klik untuk ubah menjadi Hadir Tepat Waktu">TELAT</button>`
+      : `<button type="button" class="badge badge-success font-mono font-bold" onclick="toggleLogLateStatus('${r.id}')" style="cursor: pointer; border: 2px solid #000;" title="Klik untuk ubah menjadi Telat">HADIR</button>`;
 
     return `
       <tr>

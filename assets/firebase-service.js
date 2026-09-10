@@ -478,6 +478,32 @@ export async function batchRegisterUsersToFirebase(studentsList) {
   }
 }
 
+// Helper untuk mengubah status telat per log presensi secara manual dari web
+export async function toggleLogLateStatus(logId) {
+  if (!logId) return false;
+  try {
+    const log = (window.cloudLogs || []).find(l => l.id === logId);
+    const newTelat = log ? !log.telat : true;
+    const logRef = ref(db, `log_presensi/${logId}/telat`);
+    await set(logRef, newTelat);
+    if (log) log.telat = newTelat;
+    console.log(`[Firebase] Status log ${logId} diubah menjadi telat=${newTelat}`);
+    if (typeof window.showToast === 'function') {
+      const studentName = log ? log.name : 'Mahasiswa';
+      window.showToast(`Status ${studentName} diubah ke: ${newTelat ? 'TELAT' : 'TEPAT WAKTU'}`, newTelat ? 'warning' : 'success');
+    }
+    if (typeof window.loadDashboard === 'function') window.loadDashboard();
+    if (typeof window.loadRekap === 'function') window.loadRekap();
+    return true;
+  } catch (err) {
+    console.error("[Firebase] Gagal mengubah status telat:", err);
+    if (typeof window.showToast === 'function') {
+      window.showToast("Gagal mengubah status kehadiran di cloud", "danger");
+    }
+    return false;
+  }
+}
+
 // Expose helper ke window
 window.registerUserToFirebase = registerUserToFirebase;
 window.batchRegisterUsersToFirebase = batchRegisterUsersToFirebase;
@@ -485,6 +511,7 @@ window.deleteUserFromFirebase = deleteUserFromFirebase;
 window.setActiveEventInFirebase = setActiveEventInFirebase;
 window.setActiveSessionInFirebase = setActiveSessionInFirebase;
 window.setSessionStatusInFirebase = setSessionStatusInFirebase;
+window.toggleLogLateStatus = toggleLogLateStatus;
 window.clearRekapFromFirebase = clearRekapFromFirebase;
 window.clearAttendanceTodayNode = clearAttendanceTodayNode;
 
