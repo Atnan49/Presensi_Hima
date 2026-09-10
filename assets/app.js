@@ -1498,7 +1498,7 @@ function setQuickDate(preset) {
 }
 
 // Event and proker management
-async function loadEvents() {
+async function loadEvents(retry = 2) {
   try {
     const res = await fetch(API.events);
     if (!res.ok) {
@@ -1513,7 +1513,11 @@ async function loadEvents() {
       updateActiveEventDisplay(state.activeEvent);
     }
   } catch (e) {
-    console.error('Error loading events:', e);
+    if (retry > 0) {
+      setTimeout(() => loadEvents(retry - 1), 1200);
+    } else {
+      console.error('Error loading events:', e);
+    }
   }
 }
 
