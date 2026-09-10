@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS `attendance` (
   PRIMARY KEY (`id`),
   KEY `idx_student_date` (`student_id`, `tap_date`),
   KEY `idx_tap_date` (`tap_date`),
+  KEY `idx_tap_date_session` (`tap_date`, `session_id`),
   KEY `idx_event_id` (`event_id`),
   KEY `idx_session_id` (`session_id`),
   UNIQUE KEY `uniq_student_event_date_session` (`student_id`, `event_id`, `tap_date`, `session_id`),

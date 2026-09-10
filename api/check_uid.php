@@ -31,20 +31,12 @@ $stmt->execute([$uid]);
 $student = $stmt->fetch();
 
 if (!$student) {
-    // UID belum terdaftar → simpan ke unknown_cards
-    $stmtCheck = $db->prepare("SELECT id, tap_count FROM unknown_cards WHERE uid = ?");
-    $stmtCheck->execute([$uid]);
-    $existing = $stmtCheck->fetch();
-
-    if ($existing) {
-        // Update tap count
-        $db->prepare("UPDATE unknown_cards SET tap_count = tap_count + 1, last_seen = NOW() WHERE uid = ?")
-           ->execute([$uid]);
-    } else {
-        // Insert baru
-        $db->prepare("INSERT INTO unknown_cards (uid, first_seen, last_seen, tap_count) VALUES (?, NOW(), NOW(), 1)")
-           ->execute([$uid]);
-    }
+    // UID belum terdaftar → simpan/update ke unknown_cards secara atomik
+    $db->prepare("
+        INSERT INTO unknown_cards (uid, first_seen, last_seen, tap_count)
+        VALUES (?, NOW(), NOW(), 1)
+        ON DUPLICATE KEY UPDATE tap_count = tap_count + 1, last_seen = NOW()
+    ")->execute([$uid]);
 
     sendJSON([
         'success' => true,
@@ -67,14 +59,18 @@ $sessionNames = [
 ];
 $sessionName = $sessionNames[$sessionId] ?? ucfirst($sessionId);
 
-// Dapatkan acara aktif (hanya jika ada yang berstatus is_active = 1)
+// Dapatkan acara aktif (fallback ke ID 1 / Kegiatan HIMA Umum jika belum ada yang diaktifkan)
 $activeEvent = $db->query("SELECT id, name FROM events WHERE is_active = 1 LIMIT 1")->fetch();
-$eventId   = $activeEvent ? (int)$activeEvent['id'] : null;
+$hasActive = !empty($activeEvent);
+if (!$activeEvent) {
+    $activeEvent = $db->query("SELECT id, name FROM events ORDER BY id ASC LIMIT 1")->fetch();
+}
+$eventId   = $activeEvent ? (int)$activeEvent['id'] : 1;
 $eventName = $activeEvent ? $activeEvent['name'] : 'Kegiatan HIMA Umum';
 
 // 3. Cek apakah sudah absen pada sesi ini di acara dan tanggal yang sama
-$stmtAttend = $db->prepare("SELECT id FROM attendance WHERE student_id = ? AND (event_id = ? OR (event_id IS NULL AND ? IS NULL)) AND tap_date = ? AND session_id = ? LIMIT 1");
-$stmtAttend->execute([$student['id'], $eventId, $eventId, $today, $sessionId]);
+$stmtAttend = $db->prepare("SELECT id FROM attendance WHERE student_id = ? AND event_id = ? AND tap_date = ? AND session_id = ? LIMIT 1");
+$stmtAttend->execute([$student['id'], $eventId, $today, $sessionId]);
 $alreadyAttended = $stmtAttend->fetch();
 
 if ($alreadyAttended) {
@@ -86,7 +82,7 @@ if ($alreadyAttended) {
         'nim'              => $student['nim'],
         'session_id'       => $sessionId,
         'session'          => $sessionName,
-        'has_active_event' => !empty($activeEvent),
+        'has_active_event' => $hasActive,
         'event_name'       => $eventName,
         'message'          => 'Sudah absen pada ' . $sessionName,
     ]);
@@ -111,7 +107,7 @@ try {
             'nim'              => $student['nim'],
             'session_id'       => $sessionId,
             'session'          => $sessionName,
-            'has_active_event' => !empty($activeEvent),
+            'has_active_event' => $hasActive,
             'event_name'       => $eventName,
             'message'          => 'Sudah absen pada ' . $sessionName,
         ]);
@@ -128,7 +124,7 @@ sendJSON([
     'nim'              => $student['nim'],
     'session_id'       => $sessionId,
     'session'          => $sessionName,
-    'has_active_event' => !empty($activeEvent),
+    'has_active_event' => $hasActive,
     'event_name'       => $eventName,
     'message'          => 'Selamat datang, ' . $student['name'],
 ]);

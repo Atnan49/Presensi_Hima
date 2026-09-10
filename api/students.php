@@ -12,11 +12,9 @@ if ($method === 'GET') {
     $search = isset($_GET['search']) ? '%' . trim($_GET['search']) . '%' : '%';
     $stmt   = $db->prepare("
         SELECT s.id, s.uid, s.name, s.nim, s.is_active, s.created_at,
-               COUNT(a.id) AS total_hadir
+               (SELECT COUNT(*) FROM attendance WHERE student_id = s.id) AS total_hadir
         FROM students s
-        LEFT JOIN attendance a ON a.student_id = s.id
         WHERE s.name LIKE ? OR s.nim LIKE ? OR s.uid LIKE ?
-        GROUP BY s.id
         ORDER BY s.name ASC
     ");
     $stmt->execute([$search, $search, $search]);

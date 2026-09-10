@@ -26,6 +26,9 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
   <link rel="apple-touch-icon" sizes="180x180" href="assets/Image/apple-touch-icon.png?v=2">
   <link rel="manifest" href="site.webmanifest">
   <meta name="csrf-token" content="<?= htmlspecialchars(generateCsrfToken()) ?>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="assets/style.css?v=<?= @filemtime(__DIR__ . '/assets/style.css') ?: time() ?>">
 </head>
 <body data-initial-panel="<?= htmlspecialchars($initialPanel) ?>">
@@ -294,7 +297,7 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
           <div class="flex gap-2 items-center" style="flex-wrap: wrap;">
             <div class="search-box">
               <input type="search" id="search-students" placeholder="Cari nama, NIM, atau UID..."
-                     oninput="loadStudents(this.value)">
+                     oninput="searchStudents(this.value)">
             </div>
             <button class="btn btn-warning btn-sm" onclick="openAddManualModal()">+ Tambah</button>
             <button class="btn btn-primary btn-sm" onclick="openImportModal()">+ Import CSV/Excel</button>
@@ -681,7 +684,7 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
 <!-- Toast Notifications Container -->
 <div class="toast-container" id="toast-container"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 <script src="assets/app.js?v=<?= @filemtime(__DIR__ . '/assets/app.js') ?: time() ?>"></script>
 <script type="module" src="assets/firebase-service.js?v=<?= @filemtime(__DIR__ . '/assets/firebase-service.js') ?: time() ?>"></script>
 </body>

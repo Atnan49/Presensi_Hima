@@ -6,7 +6,7 @@
 //   - /users (Registered student database)
 // ============================================================
 
-import { db, ref, onValue, set, remove } from "./firebase-config.js";
+import { db, ref, onValue, set, remove, update, query, limitToLast } from "./firebase-config.js";
 
 // Status koneksi Firebase
 let isFirebaseConnected = false;
@@ -97,19 +97,33 @@ function parseLogDateTime(item, key) {
 export function initFirebaseListeners() {
   console.log("[Firebase] Menginisialisasi Realtime Listener...");
 
-  // 1. Monitor Status Koneksi Firebase
+  // 1. Monitor Status Koneksi Cloud Browser
   const connectedRef = ref(db, ".info/connected");
   onValue(connectedRef, (snap) => {
     isFirebaseConnected = snap.val() === true;
     window.isFirebaseConnected = isFirebaseConnected;
-    if (isFirebaseConnected) {
-      console.log("[Firebase] Terhubung ke Cloud Realtime Database!");
+    if (!isFirebaseConnected) {
       const espText = document.getElementById("esp-status-text");
       const espDot = document.getElementById("esp-dot");
-      if (espText) espText.textContent = "ONLINE (CLOUD)";
-      if (espDot) espDot.className = "esp-dot online";
+      if (espText) espText.textContent = "OFFLINE";
+      if (espDot) espDot.className = "esp-dot offline";
+    }
+  });
+
+  // 1b. Real IoT Hardware Heartbeat Telemetry: /devices/esp8266
+  const deviceRef = ref(db, "devices/esp8266");
+  onValue(deviceRef, (snapshot) => {
+    const data = snapshot.val();
+    const espText = document.getElementById("esp-status-text");
+    const espDot = document.getElementById("esp-dot");
+    if (!espText || !espDot) return;
+
+    if (data && data.last_seen && (Date.now() - data.last_seen < 45000)) {
+      espText.textContent = "ONLINE (CLOUD)";
+      espDot.className = "esp-dot online";
     } else {
-      console.log("[Firebase] Menunggu koneksi cloud...");
+      espText.textContent = "STANDBY / OFFLINE";
+      espDot.className = "esp-dot offline";
     }
   });
 
@@ -186,8 +200,8 @@ export function initFirebaseListeners() {
     }
   });
 
-  // 4. Realtime Listener: /log_presensi (Pushed by ESP8266 on every tap)
-  const logPresensiRef = ref(db, "log_presensi");
+  // 4. Realtime Listener: /log_presensi (Pushed by ESP8266 on every tap, limited to last 100 for high performance)
+  const logPresensiRef = query(ref(db, "log_presensi"), limitToLast(100));
   onValue(logPresensiRef, (snapshot) => {
     const data = snapshot.val();
     if (data && typeof data === 'object') {
@@ -384,8 +398,34 @@ export async function clearAttendanceTodayNode(date) {
   }
 }
 
+// Helper batch mendaftarkan user secara atomik multi-path (1 network request)
+export async function batchRegisterUsersToFirebase(studentsList) {
+  if (!window.isFirebaseConnected || !studentsList || studentsList.length === 0) return true;
+  try {
+    const updates = {};
+    const now = Date.now();
+    for (const s of studentsList) {
+      if (s.uid && s.name) {
+        updates[`users/${s.uid}`] = {
+          name: s.name,
+          nim: s.nim || "",
+          registered_at: now
+        };
+        updates[`unknown_cards/${s.uid}`] = null;
+      }
+    }
+    await update(ref(db), updates);
+    console.log(`[Firebase] Batch ${studentsList.length} users updated atomically.`);
+    return true;
+  } catch (error) {
+    console.error("[Firebase] Batch register error:", error);
+    return false;
+  }
+}
+
 // Expose helper ke window
 window.registerUserToFirebase = registerUserToFirebase;
+window.batchRegisterUsersToFirebase = batchRegisterUsersToFirebase;
 window.deleteUserFromFirebase = deleteUserFromFirebase;
 window.setActiveEventInFirebase = setActiveEventInFirebase;
 window.setActiveSessionInFirebase = setActiveSessionInFirebase;

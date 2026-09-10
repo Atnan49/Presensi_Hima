@@ -13,7 +13,10 @@ import {
   get, 
   child, 
   remove, 
-  serverTimestamp 
+  serverTimestamp,
+  update,
+  query,
+  limitToLast
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 // Konfigurasi Firebase Web App
@@ -34,4 +37,4 @@ export const analytics = null;
 export const db = getDatabase(app);
 
 // Export Firebase Database Helpers
-export { ref, onValue, set, push, get, child, remove, serverTimestamp };
+export { ref, onValue, set, push, get, child, remove, serverTimestamp, update, query, limitToLast };

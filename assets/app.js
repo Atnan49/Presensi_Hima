@@ -427,13 +427,20 @@ async function submitRegister() {
 
   // 2. Simpan ke MySQL jika aktif
   try {
-    await fetch(API.students, {
+    const res = await fetch(API.students, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ uid, name, nim }),
     });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Gagal menyimpan data ke database');
+    }
   } catch (e) {
-    console.warn('MySQL save notice:', e);
+    if (!window.isFirebaseConnected) {
+      showToast(e.message || 'Gagal mendaftarkan mahasiswa', 'danger');
+      return;
+    }
   }
 
   showToast(`Mahasiswa "${name}" berhasil didaftarkan!`, 'success');
@@ -550,9 +557,15 @@ function escapeJsString(str) {
     .replace(/\r/g, '');
 }
 
-function searchStudents() {
-  const query = document.getElementById('search-students')?.value || '';
-  loadStudents(query);
+let searchStudentsTimer = null;
+function searchStudents(query) {
+  if (query === undefined) {
+    query = document.getElementById('search-students')?.value || '';
+  }
+  clearTimeout(searchStudentsTimer);
+  searchStudentsTimer = setTimeout(() => {
+    loadStudents(query);
+  }, 250);
 }
 
 // Modal Edit
@@ -591,13 +604,20 @@ async function submitEdit() {
 
   // 2. Update ke MySQL jika aktif
   try {
-    await fetch(API.students, {
+    const res = await fetch(API.students, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, uid, name, nim }),
     });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Gagal memperbarui database');
+    }
   } catch (e) {
-    console.warn('MySQL update notice:', e);
+    if (!window.isFirebaseConnected) {
+      showToast(e.message || 'Gagal memperbarui data', 'danger');
+      return;
+    }
   }
 
   showToast('Data mahasiswa berhasil diperbarui', 'success');
@@ -617,13 +637,20 @@ async function deleteStudent(uid, name, id = null) {
   // 2. Hapus dari MySQL jika aktif
   try {
     const numId = parseInt(id) || 0;
-    await fetch(API.students, {
+    const res = await fetch(API.students, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: numId, uid }),
     });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Gagal menghapus data dari database');
+    }
   } catch (e) {
-    console.warn('MySQL delete notice:', e);
+    if (!window.isFirebaseConnected) {
+      showToast(e.message || 'Gagal menghapus data', 'danger');
+      return;
+    }
   }
 
   showToast(`Mahasiswa "${name}" berhasil dihapus`, 'success');
@@ -934,7 +961,7 @@ function downloadExcel(filename, title, period, headers, rows) {
 // 1. Export Data Hari Ini (Dashboard)
 function exportAttendanceToday(format = 'csv') {
   const today = state.selectedDate || getLocalDateString();
-  const allLogs = window.cloudLogs || state.attendance || [];
+  const allLogs = (window.cloudLogs && window.cloudLogs.length > 0) ? window.cloudLogs : (state.attendance || []);
   const logsToday = allLogs.filter(l => (l.date || l.tap_date) === today);
 
   if (logsToday.length === 0) {
@@ -965,7 +992,7 @@ function exportAttendanceToday(format = 'csv') {
 function exportAttendance(format = 'csv') {
   const date = document.getElementById('rekap-date')?.value || state.selectedDate || getLocalDateString();
   const sessionFilter = document.getElementById('rekap-session-filter')?.value || '';
-  const allLogs = window.cloudLogs || state.attendance || [];
+  const allLogs = (window.cloudLogs && window.cloudLogs.length > 0) ? window.cloudLogs : (state.attendance || []);
   let logsFiltered = allLogs.filter(l => (l.date || l.tap_date) === date);
   if (sessionFilter) {
     logsFiltered = logsFiltered.filter(l => (l.session_id || 'sesi_1') === sessionFilter);
@@ -998,7 +1025,7 @@ function exportAttendance(format = 'csv') {
 
 // 3. Export Semua Riwayat Absensi
 function exportAllAttendance(format = 'csv') {
-  const allLogs = window.cloudLogs || state.attendance || [];
+  const allLogs = (window.cloudLogs && window.cloudLogs.length > 0) ? window.cloudLogs : (state.attendance || []);
 
   if (allLogs.length === 0) {
     showToast('Tidak ada data riwayat presensi', 'warning');
@@ -1754,8 +1781,10 @@ async function submitBatchImport() {
     });
     const data = await res.json();
 
-    // 2. Sinkronkan ke Firebase jika fungsi tersedia
-    if (typeof window.registerUserToFirebase === 'function' && window.isFirebaseConnected) {
+    // 2. Sinkronkan ke Firebase via batch multi-path (1 request) jika tersedia
+    if (typeof window.batchRegisterUsersToFirebase === 'function' && window.isFirebaseConnected) {
+      await window.batchRegisterUsersToFirebase(importedRowsCache);
+    } else if (typeof window.registerUserToFirebase === 'function' && window.isFirebaseConnected) {
       for (const item of importedRowsCache) {
         try {
           await window.registerUserToFirebase(item.uid, item.name, item.nim);

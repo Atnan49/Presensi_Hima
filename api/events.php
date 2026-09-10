@@ -7,16 +7,6 @@ setCorsHeaders();
 $db     = getDB();
 $method = $_SERVER['REQUEST_METHOD'];
 
-// Auto-migrate schema events if start_time doesn't exist
-try {
-    $colCheck = $db->query("SHOW COLUMNS FROM `events` LIKE 'start_time'")->fetch();
-    if (!$colCheck) {
-        $db->exec("ALTER TABLE `events` ADD COLUMN `start_time` TIME NULL DEFAULT '08:00:00' AFTER `event_date`, ADD COLUMN `end_time` TIME NULL DEFAULT NULL AFTER `start_time`");
-    }
-} catch (Exception $e) {
-    // Migration fallback
-}
-
 // --- GET: Ambil daftar program kerja / acara ---
 if ($method === 'GET') {
     $stmt = $db->query("
