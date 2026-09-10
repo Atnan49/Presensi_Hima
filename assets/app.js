@@ -1120,12 +1120,29 @@ function startPolling() {
   }, 5000);
 }
 
+// Format hanya tanggal (tanpa jam, menghindari pergeseran waktu UTC -> 07.00 WIB)
+function formatDateOnly(str) {
+  if (!str) return '-';
+  if (typeof str === 'string' && /^\d{4}-\d{2}-\d{2}/.test(str.trim())) {
+    const parts = str.trim().substring(0, 10).split('-').map(Number);
+    const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
+    return dateObj.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+  }
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? str : d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+}
+
 // Format tanggal dan waktu
 function formatDate(str) {
   if (!str) return '-';
+  // Jika hanya string tanggal tanpa jam (YYYY-MM-DD), jangan munculkan jam palsu 07.00
+  if (typeof str === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(str.trim())) {
+    return formatDateOnly(str);
+  }
   const d = new Date(str);
+  if (isNaN(d.getTime())) return str;
   return d.toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' }).toUpperCase()
-       + ' ' + d.toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' });
+       + ' ' + d.toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' }).replace(/:/g, '.');
 }
 
 // Monitoring status perangkat ESP8266
@@ -1306,7 +1323,7 @@ function updateActiveEventDisplay(eventData) {
     }
     if (titleEl) titleEl.textContent = ev.name;
     if (dateEl) {
-      const dateText = ev.event_date || ev.date ? formatDate(ev.event_date || ev.date) : '';
+      const dateText = ev.event_date || ev.date ? formatDateOnly(ev.event_date || ev.date) : '';
       const timeText = formatEventTime(ev.start_time, ev.end_time);
       dateEl.textContent = [dateText, timeText].filter(Boolean).join(' • ');
     }
@@ -1350,7 +1367,7 @@ function renderEventsTable(events) {
         ${ev.description ? `<div class="text-xs text-muted mt-1 font-mono">${escapeHtml(ev.description)}</div>` : ''}
       </td>
       <td class="font-mono text-sm">
-        <div>${formatDate(ev.event_date)}</div>
+        <div>${formatDateOnly(ev.event_date)}</div>
         ${timeStr ? `<div class="text-xs font-mono font-bold mt-1" style="color: var(--text-secondary);"><span class="badge badge-outline" style="font-size: 10px; padding: 1px 5px; margin-right: 4px;">WAKTU</span>${timeStr}</div>` : ''}
       </td>
       <td class="font-mono font-bold"><span class="badge badge-outline">${ev.total_hadir || 0} Mahasiswa</span></td>
