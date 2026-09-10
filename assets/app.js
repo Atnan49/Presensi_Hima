@@ -1338,6 +1338,33 @@ function updateActiveEventDisplay(eventData) {
   }
 }
 
+function calculateEventTotalHadir(ev) {
+  let total = Number(ev.total_hadir) || 0;
+  if (window.isFirebaseConnected && Array.isArray(window.cloudLogs)) {
+    const evDate = (ev.event_date || '').substring(0, 10);
+    const evNameClean = (ev.name || '').trim().toLowerCase();
+
+    const matchedLogs = window.cloudLogs.filter(l => {
+      const logEventName = (l.event_name || '').trim().toLowerCase();
+      // 1. Cocokkan jika nama acara sama
+      if (logEventName && evNameClean && logEventName === evNameClean) {
+        return true;
+      }
+      // 2. Jika tanggal log sama dengan tanggal acara
+      if (evDate && l.date === evDate) {
+        if (!logEventName || logEventName === 'kegiatan hima umum' || logEventName === evNameClean) {
+          return true;
+        }
+      }
+      return false;
+    });
+
+    const uniqueUids = new Set(matchedLogs.map(l => l.uid));
+    total = Math.max(total, uniqueUids.size);
+  }
+  return total;
+}
+
 function renderEventsTable(events) {
   const tbody = document.getElementById('events-tbody');
   const badge = document.getElementById('events-count-badge');
@@ -1358,6 +1385,7 @@ function renderEventsTable(events) {
   tbody.innerHTML = events.map((ev, i) => {
     const isActive = ev.is_active == 1;
     const timeStr = formatEventTime(ev.start_time, ev.end_time);
+    const totalHadir = calculateEventTotalHadir(ev);
     return `
     <tr class="${isActive ? 'row-active-event' : ''}">
       <td class="font-mono font-bold">${i + 1}</td>
@@ -1370,7 +1398,7 @@ function renderEventsTable(events) {
         <div>${formatDateOnly(ev.event_date)}</div>
         ${timeStr ? `<div class="text-xs font-mono font-bold mt-1" style="color: var(--text-secondary);"><span class="badge badge-outline" style="font-size: 10px; padding: 1px 5px; margin-right: 4px;">WAKTU</span>${timeStr}</div>` : ''}
       </td>
-      <td class="font-mono font-bold"><span class="badge badge-outline">${ev.total_hadir || 0} Mahasiswa</span></td>
+      <td class="font-mono font-bold"><span class="badge badge-outline">${totalHadir} Mahasiswa</span></td>
       <td>
         <span class="badge ${isActive ? 'badge-success' : 'badge-secondary'} font-mono">
           ${isActive ? 'AKTIF' : 'SELESAI / NONAKTIF'}
@@ -1943,6 +1971,8 @@ document.addEventListener('DOMContentLoaded', () => {
   window.loadStudents = loadStudents;
   window.loadRekap = loadRekap;
   window.loadEvents = loadEvents;
+  window.renderEventsTable = renderEventsTable;
+  window.state = state;
   window.onSessionChange = onSessionChange;
   window.updateActiveSessionDisplay = updateActiveSessionDisplay;
   window.formatSessionLabel = formatSessionLabel;

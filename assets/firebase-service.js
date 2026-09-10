@@ -264,10 +264,13 @@ export function initFirebaseListeners() {
           window.showToast(`Presensi: ${latestLog.name}${sessLabel} (${latestLog.waktu})`, 'success');
         }
 
-        // Refresh data dashboard & rekap dengan debounce
+        // Refresh data dashboard, rekap, & program kerja dengan debounce
         triggerDebouncedDashboard();
         if (typeof window.loadRekap === 'function') {
           window.loadRekap();
+        }
+        if (typeof window.renderEventsTable === 'function' && window.state && Array.isArray(window.state.events) && window.state.events.length > 0) {
+          window.renderEventsTable(window.state.events);
         }
       }
     } else {
