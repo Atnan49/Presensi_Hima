@@ -256,7 +256,7 @@ export function initFirebaseListeners() {
 
         // Update Live Feed di Dashboard dengan log terbaru (hanya bunyikan suara jika bukan initial load)
         if (latestLog && typeof window.updateLiveFeed === 'function') {
-          window.updateLiveFeed(latestLog.name, latestLog.waktu, !isInitialLoad);
+          window.updateLiveFeed(latestLog.name, latestLog.waktu, !isInitialLoad, latestLog.telat);
         }
 
         // Tampilkan Toast jika bukan saat halaman baru pertama kali dibuka

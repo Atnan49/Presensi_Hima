@@ -300,7 +300,7 @@ function updateDashboardUI() {
   // Live feed (tap terakhir hari ini)
   if (state.attendance.length > 0) {
     const last = state.attendance[0]; // paling baru
-    updateLiveFeed(last.name, last.waktu, false);
+    updateLiveFeed(last.name, last.waktu, false, last.telat);
   }
 
   // Unknown cards badge
@@ -351,13 +351,13 @@ function renderDashboardTable(records) {
   }).join('');
 }
 
-let lastRecordedTapTime = '';
+let lastRecordedTapKey = '';
 let isInitialAppLoad = true;
 setTimeout(() => {
   isInitialAppLoad = false;
 }, 2000);
 
-function updateLiveFeed(name, time, playSound = true) {
+function updateLiveFeed(name, time, playSound = true, isLate = false) {
   const el = document.getElementById('latest-tap');
   if (!el) return;
   
@@ -366,13 +366,20 @@ function updateLiveFeed(name, time, playSound = true) {
     return;
   }
 
+  const isLateBool = isLate === true || isLate === 1 || isLate === 'true';
+  const statusBadge = isLateBool
+    ? `<span class="badge badge-warning font-mono font-bold" style="margin-left: 8px; border: 2px solid #000;">TELAT</span>`
+    : `<span class="badge badge-success font-mono font-bold" style="margin-left: 8px; border: 2px solid #000;">TEPAT WAKTU</span>`;
+
   el.innerHTML = `
     <span class="tap-name">${escapeHtml(name)}</span>
     <span class="tap-time font-mono font-bold">[${escapeHtml(time || '')}]</span>
+    ${statusBadge}
   `;
 
-  if (time && time !== lastRecordedTapTime) {
-    lastRecordedTapTime = time;
+  const tapKey = `${name}_${time}_${isLateBool ? '1' : '0'}`;
+  if (tapKey !== lastRecordedTapKey) {
+    lastRecordedTapKey = tapKey;
     if (playSound && !isInitialAppLoad) {
       playTapChime();
     }
