@@ -1287,11 +1287,11 @@ function updateActiveEventDisplay(eventData) {
   } else {
     if (badgeEl) {
       badgeEl.style.display = 'inline-flex';
-      badgeEl.style.background = '#e2e8f0';
-      badgeEl.style.color = '#475569';
+      badgeEl.style.background = '#f1f5f9';
+      badgeEl.style.color = '#334155';
     }
-    if (titleEl) titleEl.textContent = 'Tidak Ada Acara Aktif';
-    if (dateEl)  dateEl.textContent = '-';
+    if (titleEl) titleEl.textContent = 'Presensi Umum (Tanpa Acara)';
+    if (dateEl)  dateEl.textContent = 'Kegiatan Reguler';
   }
 }
 
@@ -1583,7 +1583,7 @@ function copyAlphaListToWhatsApp() {
     return;
   }
 
-  const eventName = state.activeEvent?.name || 'Kegiatan Organisasi';
+  const eventName = state.activeEvent?.name || 'Kegiatan HIMA Umum';
   const sessName  = state.activeSession?.name || 'Sesi 1';
   const dateStr   = state.selectedDate || getLocalDateString();
 

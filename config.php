@@ -68,6 +68,22 @@ function getDB() {
                 ensureDatabaseTables($pdo);
             }
         } catch (PDOException $e) {
+            // Jika access denied pada localhost (misal .env berisi kredensial Hostinger saat run lokal)
+            if (($e->getCode() == 1045 || strpos($e->getMessage(), 'Access denied') !== false) && in_array(DB_HOST, ['localhost', '127.0.0.1'])) {
+                try {
+                    $localDsn = 'mysql:host=localhost;port=3306;dbname=presensi;charset=utf8mb4';
+                    $pdo = new PDO($localDsn, 'root', '', [
+                        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+                        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                        PDO::ATTR_EMULATE_PREPARES   => false,
+                    ]);
+                    $pdo->exec("SET time_zone = '+07:00'");
+                    return $pdo;
+                } catch (Exception $localEx) {
+                    // Lanjut ke penanganan error default jika fallback lokal gagal
+                }
+            }
+
             // Jika database belum dibuat (error 1049: Unknown database), buat otomatis!
             if ($e->getCode() == 1049 || strpos($e->getMessage(), 'Unknown database') !== false) {
                 try {

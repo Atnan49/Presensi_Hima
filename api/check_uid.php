@@ -67,13 +67,9 @@ $sessionNames = [
 ];
 $sessionName = $sessionNames[$sessionId] ?? ucfirst($sessionId);
 
-// Dapatkan acara aktif
+// Dapatkan acara aktif (hanya jika ada yang berstatus is_active = 1)
 $activeEvent = $db->query("SELECT id, name FROM events WHERE is_active = 1 LIMIT 1")->fetch();
-if (!$activeEvent) {
-    // Fallback ke acara reguler default (ID 1) agar presensi tidak menjadi data yatim (orphan)
-    $activeEvent = $db->query("SELECT id, name FROM events ORDER BY id ASC LIMIT 1")->fetch();
-}
-$eventId = $activeEvent ? (int)$activeEvent['id'] : null;
+$eventId   = $activeEvent ? (int)$activeEvent['id'] : null;
 $eventName = $activeEvent ? $activeEvent['name'] : 'Kegiatan HIMA Umum';
 
 // 3. Cek apakah sudah absen pada sesi ini di acara dan tanggal yang sama
@@ -83,14 +79,16 @@ $alreadyAttended = $stmtAttend->fetch();
 
 if ($alreadyAttended) {
     sendJSON([
-        'success'    => true,
-        'status'     => 'already_attended',
-        'uid'        => $uid,
-        'name'       => $student['name'],
-        'nim'        => $student['nim'],
-        'session_id' => $sessionId,
-        'session'    => $sessionName,
-        'message'    => 'Sudah absen pada ' . $sessionName,
+        'success'          => true,
+        'status'           => 'already_attended',
+        'uid'              => $uid,
+        'name'             => $student['name'],
+        'nim'              => $student['nim'],
+        'session_id'       => $sessionId,
+        'session'          => $sessionName,
+        'has_active_event' => !empty($activeEvent),
+        'event_name'       => $eventName,
+        'message'          => 'Sudah absen pada ' . $sessionName,
     ]);
     exit;
 }
@@ -106,14 +104,16 @@ try {
     // Tangkap bila terjadi duplicate entry dari double-tap bersamaan (Error Code 23000)
     if ($e->getCode() == 23000 || strpos($e->getMessage(), 'Duplicate entry') !== false) {
         sendJSON([
-            'success'    => true,
-            'status'     => 'already_attended',
-            'uid'        => $uid,
-            'name'       => $student['name'],
-            'nim'        => $student['nim'],
-            'session_id' => $sessionId,
-            'session'    => $sessionName,
-            'message'    => 'Sudah absen pada ' . $sessionName,
+            'success'          => true,
+            'status'           => 'already_attended',
+            'uid'              => $uid,
+            'name'             => $student['name'],
+            'nim'              => $student['nim'],
+            'session_id'       => $sessionId,
+            'session'          => $sessionName,
+            'has_active_event' => !empty($activeEvent),
+            'event_name'       => $eventName,
+            'message'          => 'Sudah absen pada ' . $sessionName,
         ]);
         exit;
     }
@@ -121,13 +121,14 @@ try {
 }
 
 sendJSON([
-    'success'    => true,
-    'status'     => 'registered',
-    'uid'        => $uid,
-    'name'       => $student['name'],
-    'nim'        => $student['nim'],
-    'session_id' => $sessionId,
-    'session'    => $sessionName,
-    'event_name' => $eventName,
-    'message'    => 'Selamat datang, ' . $student['name'],
+    'success'          => true,
+    'status'           => 'registered',
+    'uid'              => $uid,
+    'name'             => $student['name'],
+    'nim'              => $student['nim'],
+    'session_id'       => $sessionId,
+    'session'          => $sessionName,
+    'has_active_event' => !empty($activeEvent),
+    'event_name'       => $eventName,
+    'message'          => 'Selamat datang, ' . $student['name'],
 ]);

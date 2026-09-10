@@ -205,7 +205,7 @@ export function initFirebaseListeners() {
             nim: studentInfo.nim || item.nim || '-',
             session_id: item.session_id || 'sesi_1',
             session_name: item.session_name || 'Sesi 1 (Datang)',
-            event_name: item.event_name || '',
+            event_name: item.event_name || 'Kegiatan HIMA Umum',
             waktu: parsed.waktu,
             date: parsed.date,
             timestamp: parsed.timestamp

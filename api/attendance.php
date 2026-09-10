@@ -45,7 +45,7 @@ if ($method === 'GET') {
                    a.tap_date, a.event_id,
                    COALESCE(a.session_id, 'sesi_1') AS session_id,
                    COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
-                   COALESCE(e.name, 'Kegiatan HIMA') AS event_name
+                   COALESCE(e.name, 'Kegiatan HIMA Umum') AS event_name
             FROM attendance a
             JOIN students s ON s.id = a.student_id
             LEFT JOIN events e ON e.id = a.event_id
@@ -66,7 +66,7 @@ if ($method === 'GET') {
                    a.tap_date, a.event_id,
                    COALESCE(a.session_id, 'sesi_1') AS session_id,
                    COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
-                   COALESCE(e.name, 'Kegiatan HIMA') AS event_name
+                   COALESCE(e.name, 'Kegiatan HIMA Umum') AS event_name
             FROM attendance a
             JOIN students s ON s.id = a.student_id
             LEFT JOIN events e ON e.id = a.event_id
@@ -82,7 +82,7 @@ if ($method === 'GET') {
                    a.tap_date, a.event_id,
                    COALESCE(a.session_id, 'sesi_1') AS session_id,
                    COALESCE(a.session_name, 'Sesi 1 (Datang)') AS session_name,
-                   COALESCE(e.name, 'Kegiatan HIMA') AS event_name
+                   COALESCE(e.name, 'Kegiatan HIMA Umum') AS event_name
             FROM attendance a
             JOIN students s ON s.id = a.student_id
             LEFT JOIN events e ON e.id = a.event_id

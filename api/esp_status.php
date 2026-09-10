@@ -8,9 +8,22 @@ $method = $_SERVER['REQUEST_METHOD'];
 
 // ESP8266 POST heartbeat setiap 20 detik
 if ($method === 'POST') {
-    $ip = $_SERVER['REMOTE_ADDR'];
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
     file_put_contents(__DIR__ . '/../esp_heartbeat.txt', time() . '|' . $ip);
-    sendJSON(['success' => true, 'message' => 'Heartbeat received', 'ip' => $ip]);
+    
+    $activeEvent = null;
+    try {
+        $db = getDB();
+        $activeEvent = $db->query("SELECT id, name FROM events WHERE is_active = 1 LIMIT 1")->fetch();
+    } catch (Exception $e) {}
+
+    sendJSON([
+        'success'          => true,
+        'message'          => 'Heartbeat received',
+        'ip'               => $ip,
+        'has_active_event' => !empty($activeEvent),
+        'event_name'       => $activeEvent ? $activeEvent['name'] : ''
+    ]);
 }
 
 // Website GET: cek apakah ESP online (heartbeat < 30 detik terakhir)
