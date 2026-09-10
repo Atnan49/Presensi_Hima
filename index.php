@@ -648,11 +648,11 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
     <div class="form-group">
       <label class="form-label">Target Presensi Acara *</label>
       <select id="event-target-audience" style="width: 100%; border: 2px solid #000; padding: 8px 10px; font-weight: 700; background: #fff;">
-        <option value="all" selected>Semua Anggota (Umum)</option>
-        <option value="committee_only">Khusus Panitia Acara Ini</option>
+        <option value="committee_only" selected>Khusus Panitia (Hanya Panitia Terdaftar)</option>
+        <option value="all">Semua Anggota (Umum)</option>
         <option value="bpi_bph">Khusus Pengurus (BPI &amp; BPH Saja)</option>
       </select>
-      <div class="text-xs text-muted font-mono mt-1">Daftar anggota belum hadir (Alpha) akan otomatis menyesuaikan target ini.</div>
+      <div class="text-xs text-muted font-mono mt-1">Hanya mahasiswa yang didaftarkan sebagai panitia yang diizinkan melakukan presensi.</div>
     </div>
 
     <div class="form-group">

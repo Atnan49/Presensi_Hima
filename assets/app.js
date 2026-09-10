@@ -340,7 +340,16 @@ async function loadDashboard() {
     const cloudUserKeys = Object.keys(window.cloudUsers || {});
     state.totalMhs = cloudUserKeys.length;
     
-    // Ambil log kehadiran HARI INI dari cloudLogs
+    // Sesuaikan total mahasiswa dengan total panitia jika ada acara aktif
+    const activeEvId = state.activeEvent?.id || window.cloudActiveEvent?.id;
+    if (activeEvId && window.cloudEventCommittees && window.cloudEventCommittees[activeEvId]) {
+      const commCount = Object.keys(window.cloudEventCommittees[activeEvId]).length;
+      if (commCount > 0) {
+        state.totalMhs = commCount;
+      }
+    }
+    
+    // Ambil log kehadiran HARI INI dari cloudLogs (hanya panitia)
     const allLogs = window.cloudLogs || [];
     const logsToday = allLogs.filter(l => l.date === today);
     const uniqueUids = new Set(logsToday.map(l => l.uid));
@@ -1799,7 +1808,7 @@ function openCreateEventModal() {
   const endTimeInput = document.getElementById('event-end-time');
   if (endTimeInput) endTimeInput.value = '';
   const audSelect = document.getElementById('event-target-audience');
-  if (audSelect) audSelect.value = 'all';
+  if (audSelect) audSelect.value = 'committee_only';
   document.getElementById('event-name').value = '';
   document.getElementById('event-desc').value = '';
   if (modal) modal.classList.add('active', 'open');
@@ -1818,7 +1827,7 @@ async function submitCreateEvent() {
   const start_time      = formatTime24Hour(rawStart);
   const rawEnd          = document.getElementById('event-end-time')?.value?.trim();
   const end_time        = rawEnd ? formatTime24Hour(rawEnd) : null;
-  const target_audience = document.getElementById('event-target-audience')?.value || 'all';
+  const target_audience = document.getElementById('event-target-audience')?.value || 'committee_only';
   const is_active       = document.getElementById('event-active')?.checked ? 1 : 0;
 
   if (!name) {
@@ -2214,11 +2223,18 @@ async function openAlphaModal() {
   // Tentukan Target Pool berdasarkan Target Audience dari Acara Aktif
   let targetPool = allStudents.filter(s => s.is_active === undefined || s.is_active == 1);
 
-  if (activeEv && activeEv.target_audience === 'committee_only') {
-    // Hanya panitia acara ini
+  const isCommitteeRestricted = !activeEv || activeEv.target_audience === 'committee_only' || activeEv.target_audience === undefined;
+
+  if (isCommitteeRestricted) {
+    // Hanya panitia acara ini (atau panitia terdaftar)
     let commUids = new Set();
-    if (window.cloudEventCommittees && window.cloudEventCommittees[activeEv.id]) {
+    if (activeEv && window.cloudEventCommittees && window.cloudEventCommittees[activeEv.id]) {
       Object.keys(window.cloudEventCommittees[activeEv.id]).forEach(u => commUids.add(u));
+    }
+    if (commUids.size === 0 && window.cloudEventCommittees) {
+      for (const evKey in window.cloudEventCommittees) {
+        Object.keys(window.cloudEventCommittees[evKey] || {}).forEach(u => commUids.add(u));
+      }
     }
     if (commUids.size > 0) {
       targetPool = targetPool.filter(s => commUids.has(s.uid));

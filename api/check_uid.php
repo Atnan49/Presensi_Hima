@@ -26,7 +26,7 @@ if (empty($uid)) {
 $db = getDB();
 
 // 1. Cek apakah UID terdaftar di tabel students
-$stmt = $db->prepare("SELECT id, name, nim FROM students WHERE uid = ? AND is_active = 1 LIMIT 1");
+$stmt = $db->prepare("SELECT id, name, nim, category, division, position FROM students WHERE uid = ? AND is_active = 1 LIMIT 1");
 $stmt->execute([$uid]);
 $student = $stmt->fetch();
 
@@ -60,16 +60,89 @@ $sessionNames = [
 $sessionName = $sessionNames[$sessionId] ?? ucfirst($sessionId);
 
 // Dapatkan acara aktif (fallback ke ID 1 / Kegiatan HIMA Umum jika belum ada yang diaktifkan)
-$activeEvent = $db->query("SELECT id, name, start_time, end_time FROM events WHERE is_active = 1 LIMIT 1")->fetch();
+$activeEvent = $db->query("SELECT id, name, start_time, end_time, target_audience FROM events WHERE is_active = 1 LIMIT 1")->fetch();
 $hasActive = !empty($activeEvent);
 if (!$activeEvent) {
-    $activeEvent = $db->query("SELECT id, name, start_time, end_time FROM events ORDER BY id ASC LIMIT 1")->fetch();
+    $activeEvent = $db->query("SELECT id, name, start_time, end_time, target_audience FROM events ORDER BY id ASC LIMIT 1")->fetch();
 }
 $eventId   = $activeEvent ? (int)$activeEvent['id'] : 1;
 $eventName = $activeEvent ? $activeEvent['name'] : 'Kegiatan HIMA Umum';
 $startTime = ($activeEvent && !empty($activeEvent['start_time'])) ? $activeEvent['start_time'] : '08:00:00';
 
-// 3. Cek apakah sudah absen pada sesi ini di acara dan tanggal yang sama
+// 3. Validasi Kepanitiaan: Hanya mahasiswa yang terdaftar sebagai panitia yang diizinkan absen
+$isCommittee   = false;
+$committeeRole = '';
+$committeeDiv  = '';
+
+// 3a. Cek apakah terdaftar di tabel event_committees untuk acara ini
+if ($eventId > 0) {
+    try {
+        $stmtComm = $db->prepare("
+            SELECT role, division 
+            FROM event_committees 
+            WHERE event_id = ? AND student_id = ? 
+            LIMIT 1
+        ");
+        $stmtComm->execute([$eventId, $student['id']]);
+        $commRow = $stmtComm->fetch();
+        if ($commRow) {
+            $isCommittee   = true;
+            $committeeRole = $commRow['role'];
+            $committeeDiv  = $commRow['division'];
+        }
+    } catch (\Throwable $e) {
+    }
+}
+
+// 3b. Cek apakah terdaftar di kepanitiaan manapun di sistem
+if (!$isCommittee) {
+    try {
+        $stmtCommAny = $db->prepare("
+            SELECT ec.role, ec.division, e.name AS event_name
+            FROM event_committees ec
+            LEFT JOIN events e ON e.id = ec.event_id
+            WHERE ec.student_id = ?
+            LIMIT 1
+        ");
+        $stmtCommAny->execute([$student['id']]);
+        $commAny = $stmtCommAny->fetch();
+        if ($commAny) {
+            $isCommittee   = true;
+            $committeeRole = $commAny['role'];
+            $committeeDiv  = $commAny['division'];
+        }
+    } catch (\Throwable $e) {
+    }
+}
+
+// 3c. Cek jika data mahasiswa memiliki jabatan kepanitiaan (position)
+if (!$isCommittee && !empty($student['position'])) {
+    $posLower = strtolower($student['position']);
+    if (strpos($posLower, 'panitia') !== false || strpos($posLower, 'ketua') !== false || strpos($posLower, 'sie') !== false || strpos($posLower, 'koor') !== false) {
+        $isCommittee   = true;
+        $committeeRole = $student['position'];
+        $committeeDiv  = $student['division'] ?? '';
+    }
+}
+
+// Tolak presensi jika bukan panitia
+if (!$isCommittee) {
+    sendJSON([
+        'success'          => false,
+        'status'           => 'not_committee',
+        'uid'              => $uid,
+        'name'             => $student['name'],
+        'nim'              => $student['nim'],
+        'session_id'       => $sessionId,
+        'session'          => $sessionName,
+        'has_active_event' => $hasActive,
+        'event_name'       => $eventName,
+        'message'          => 'Akses Ditolak: Hanya mahasiswa yang terdaftar sebagai panitia yang dapat melakukan presensi.',
+    ], 403);
+    exit;
+}
+
+// 4. Cek apakah sudah absen pada sesi ini di acara dan tanggal yang sama
 $stmtAttend = $db->prepare("SELECT id FROM attendance WHERE student_id = ? AND event_id = ? AND tap_date = ? AND session_id = ? LIMIT 1");
 $stmtAttend->execute([$student['id'], $eventId, $today, $sessionId]);
 $alreadyAttended = $stmtAttend->fetch();
@@ -144,5 +217,7 @@ sendJSON([
     'session'          => $sessionName,
     'has_active_event' => $hasActive,
     'event_name'       => $eventName,
-    'message'          => 'Selamat datang, ' . $student['name'],
+    'is_committee'     => true,
+    'committee_role'   => $committeeRole,
+    'message'          => 'Selamat datang Panitia: ' . $student['name'] . ($committeeRole ? " ($committeeRole)" : ''),
 ]);

@@ -91,8 +91,8 @@ if ($method === 'POST') {
     $eventDate      = trim($body['event_date'] ?? date('Y-m-d'));
     $startTime      = !empty($body['start_time']) ? trim($body['start_time']) : '08:00:00';
     $endTime        = !empty($body['end_time']) ? trim($body['end_time']) : null;
-    $targetAudience = trim($body['target_audience'] ?? 'all');
-    if (!in_array($targetAudience, ['all', 'committee_only', 'bpi_bph'])) $targetAudience = 'all';
+    $targetAudience = trim($body['target_audience'] ?? 'committee_only');
+    if (!in_array($targetAudience, ['all', 'committee_only', 'bpi_bph'])) $targetAudience = 'committee_only';
     $isActive       = !empty($body['is_active']) ? 1 : 0;
 
     if ($startTime && strlen($startTime) === 5) $startTime .= ':00';

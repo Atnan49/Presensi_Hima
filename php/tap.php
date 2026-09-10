@@ -27,6 +27,29 @@ if ($result->num_rows === 0) {
 $mhs = $result->fetch_assoc();
 $stmt->close();
 
+// ── 2b. Validasi Kepanitiaan ─────────────────────────────────
+// Hanya mahasiswa yang terdaftar sebagai panitia yang diizinkan absen
+$isPanitia = false;
+$chkComm = $conn->prepare("SELECT id, role FROM event_committees WHERE student_id = ? LIMIT 1");
+if ($chkComm) {
+    $chkComm->bind_param("i", $mhs['id']);
+    $chkComm->execute();
+    $resComm = $chkComm->get_result();
+    if ($resComm && $resComm->num_rows > 0) {
+        $isPanitia = true;
+    }
+    $chkComm->close();
+}
+if (!$isPanitia) {
+    file_put_contents("status_alat.txt", "Bukan Panitia: " . $mhs['nama']);
+    echo json_encode([
+        "status" => "bukan_panitia",
+        "pesan"  => "Akses Ditolak: Hanya mahasiswa yang terdaftar sebagai panitia yang dapat melakukan presensi.",
+        "nama"   => $mhs['nama']
+    ]);
+    exit;
+}
+
 // ── 3. Cari acara yang AKTIF hari ini ───────────────────────
 $today = date('Y-m-d');
 $stmt2 = $conn->prepare(
