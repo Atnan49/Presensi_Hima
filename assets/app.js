@@ -1407,12 +1407,14 @@ function unlockAudioContext() {
     }
   }
   if (_sharedAudioCtx && _sharedAudioCtx.state === 'suspended') {
-    _sharedAudioCtx.resume().catch(() => {});
+    if (!navigator.userActivation || navigator.userActivation.isActive || navigator.userActivation.hasBeenActive) {
+      _sharedAudioCtx.resume().catch(() => {});
+    }
   }
 }
 
 // Buka kunci AudioContext secara otomatis begitu user berinteraksi dengan halaman
-['click', 'touchstart', 'keydown'].forEach(evt => {
+['click', 'touchstart', 'pointerdown'].forEach(evt => {
   document.addEventListener(evt, unlockAudioContext, { once: true, passive: true });
 });
 

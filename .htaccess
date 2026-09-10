@@ -64,9 +64,13 @@ AddDefaultCharset UTF-8
     Header set Referrer-Policy "strict-origin-when-cross-origin"
 </IfModule>
 
+# MIME types
+AddType application/manifest+json .webmanifest
+
 # Browser caching for static frontend assets
 <IfModule mod_expires.c>
     ExpiresActive On
+    ExpiresByType application/manifest+json "access plus 1 week"
     ExpiresByType text/css "access plus 1 month"
     ExpiresByType application/javascript "access plus 1 month"
     ExpiresByType image/png "access plus 1 month"
