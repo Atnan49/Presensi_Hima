@@ -4,7 +4,6 @@
 require_once 'config.php';
 startSessionSafe();
 
-// Jika sudah login, langsung ke dashboard
 if (isLoggedIn()) {
     header('Location: dashboard');
     exit;
