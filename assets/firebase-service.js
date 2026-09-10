@@ -82,11 +82,13 @@ function parseLogDateTime(item, key) {
     }
   }
 
-  // 3. Konversi timestamp ke format waktu (HH.MM) & tanggal (YYYY-MM-DD)
+  // 3. Konversi timestamp ke format waktu 24 jam (HH:mm) & tanggal (YYYY-MM-DD)
   if (timestamp) {
     const dateObj = new Date(timestamp);
     if (!waktuStr) {
-      waktuStr = dateObj.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace(/:/g, '.');
+      const h = String(dateObj.getHours()).padStart(2, '0');
+      const m = String(dateObj.getMinutes()).padStart(2, '0');
+      waktuStr = `${h}:${m}`;
     }
     if (!dateStr) {
       dateStr = getLocalDateString(dateObj);
@@ -95,7 +97,23 @@ function parseLogDateTime(item, key) {
 
   // 4. Fallback jika sama sekali tidak ada data waktu
   if (!waktuStr) {
-    waktuStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace(/:/g, '.');
+    const now = new Date();
+    const h = String(now.getHours()).padStart(2, '0');
+    const m = String(now.getMinutes()).padStart(2, '0');
+    waktuStr = `${h}:${m}`;
+  } else {
+    // Normalisasi waktu ke format 24 jam jika ada format 12 jam (AM/PM)
+    const ampmMatch = String(waktuStr).match(/^(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\s*([ap]m)$/i);
+    if (ampmMatch) {
+      let h = parseInt(ampmMatch[1], 10);
+      const m = ampmMatch[2];
+      const isPm = ampmMatch[4].toLowerCase() === 'pm';
+      if (isPm && h < 12) h += 12;
+      if (!isPm && h === 12) h = 0;
+      waktuStr = `${String(h).padStart(2, '0')}:${m}`;
+    } else {
+      waktuStr = waktuStr.replace(/^(\d{1,2})\.(\d{2})$/, '$1:$2');
+    }
   }
   if (!dateStr) {
     dateStr = getLocalDateString(new Date());

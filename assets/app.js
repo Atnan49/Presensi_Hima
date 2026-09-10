@@ -232,7 +232,50 @@ function showPanel(name, updateHistory = true) {
   if (name === 'events')    loadEvents();
 }
 
-// Realtime clock display
+// Helper format waktu 24 jam konsisten (HH:mm atau HH:mm:ss)
+function formatTime24Hour(val, withSeconds = false) {
+  if (!val && val !== 0) return '-';
+  if (val instanceof Date) {
+    const h = String(val.getHours()).padStart(2, '0');
+    const m = String(val.getMinutes()).padStart(2, '0');
+    if (withSeconds) {
+      const s = String(val.getSeconds()).padStart(2, '0');
+      return `${h}:${m}:${s}`;
+    }
+    return `${h}:${m}`;
+  }
+  const str = String(val).trim();
+  if (!str) return '-';
+
+  // Deteksi format 12 jam (cth: "10:15:20 PM", "08.15 AM", "2:30 pm")
+  const ampmMatch = str.match(/^(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\s*([ap]m)$/i);
+  if (ampmMatch) {
+    let h = parseInt(ampmMatch[1], 10);
+    const m = ampmMatch[2];
+    const s = ampmMatch[3];
+    const isPm = ampmMatch[4].toLowerCase() === 'pm';
+    if (isPm && h < 12) h += 12;
+    if (!isPm && h === 12) h = 0;
+    const hStr = String(h).padStart(2, '0');
+    if (withSeconds && s) return `${hStr}:${m}:${s}`;
+    return `${hStr}:${m}`;
+  }
+
+  // Jika string datetime lengkap (cth: "2026-09-10 14:30:00" atau "10/09/2026 14:30:00")
+  const timePart = str.match(/\b(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\b/);
+  if (timePart) {
+    const h = timePart[1].padStart(2, '0');
+    const m = timePart[2];
+    const s = timePart[3];
+    if (withSeconds && s) return `${h}:${m}:${s}`;
+    return `${h}:${m}`;
+  }
+
+  return str;
+}
+window.formatTime24Hour = formatTime24Hour;
+
+// Realtime clock display (format 24 jam)
 function updateClock() {
   const now  = new Date();
   const opts = { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' };
@@ -240,7 +283,12 @@ function updateClock() {
   const liveTime = document.getElementById('live-time');
   
   if (liveDate) liveDate.textContent = now.toLocaleDateString('id-ID', opts).toUpperCase();
-  if (liveTime) liveTime.textContent = now.toLocaleTimeString('id-ID');
+  if (liveTime) {
+    const h = String(now.getHours()).padStart(2, '0');
+    const m = String(now.getMinutes()).padStart(2, '0');
+    const s = String(now.getSeconds()).padStart(2, '0');
+    liveTime.textContent = `${h}:${m}:${s}`;
+  }
 }
 
 // Dashboard logic and data loading
@@ -373,7 +421,7 @@ function renderDashboardTable(records) {
         </td>
         <td class="font-mono">${escapeHtml(r.nim || '-')}</td>
         <td class="font-mono"><span class="badge ${getSessionBadgeClass(r.session_id)}">${escapeHtml(formatSessionLabel(r.session_id, r.session_name))}</span></td>
-        <td class="font-mono font-bold">${escapeHtml(r.waktu)}</td>
+        <td class="font-mono font-bold">${escapeHtml(formatTime24Hour(r.waktu))}</td>
         <td>${statusBadge}</td>
       </tr>
     `;
@@ -402,7 +450,7 @@ function updateLiveFeed(name, time, playSound = true, isLate = false) {
 
   el.innerHTML = `
     <span class="tap-name">${escapeHtml(name)}</span>
-    <span class="tap-time font-mono font-bold">[${escapeHtml(time || '')}]</span>
+    <span class="tap-time font-mono font-bold">[${escapeHtml(formatTime24Hour(time))}]</span>
     ${statusBadge}
   `;
 
@@ -924,7 +972,7 @@ function renderRekapTable(records, summary) {
           ${commInfo ? `<div class="mt-1"><span class="badge badge-committee font-mono text-xs">${escapeHtml(commInfo.role || 'Panitia')}</span></div>` : ((pos || div) ? `<div class="text-xs font-mono text-muted mt-1">${escapeHtml([pos, div].filter(Boolean).join(' • '))}</div>` : '')}
         </td>
         <td class="font-mono"><span class="badge ${getSessionBadgeClass(r.session_id)}">${escapeHtml(formatSessionLabel(r.session_id, r.session_name))}</span></td>
-        <td class="font-mono font-bold">${escapeHtml(r.waktu)}</td>
+        <td class="font-mono font-bold">${escapeHtml(formatTime24Hour(r.waktu))}</td>
         <td>${statusBadge}</td>
       </tr>
     `;
@@ -1023,7 +1071,11 @@ function downloadExcel(filename, title, period, headers, rows) {
     return;
   }
 
-  const dateNow = new Date().toLocaleDateString('id-ID', { day:'2-digit', month:'long', year:'numeric' }) + ' ' + new Date().toLocaleTimeString('id-ID');
+  const now = new Date();
+  const h = String(now.getHours()).padStart(2, '0');
+  const m = String(now.getMinutes()).padStart(2, '0');
+  const s = String(now.getSeconds()).padStart(2, '0');
+  const dateNow = now.toLocaleDateString('id-ID', { day:'2-digit', month:'long', year:'numeric' }) + ` ${h}:${m}:${s}`;
 
   // JIKA LIBRARY SheetJS (XLSX) TERSEDIA -> BUAT FILE ASLI .XLSX BERSIH & RAPI
   if (typeof XLSX !== 'undefined') {
@@ -1178,7 +1230,7 @@ function exportAttendanceToday(format = 'csv') {
       (r.telat === true || r.telat === 1 || r.telat === 'true') ? 'HADIR (TELAT)' : 'HADIR',
       formatSessionLabel(r.session_id, r.session_name),
       r.date || r.tap_date || today,
-      r.waktu
+      formatTime24Hour(r.waktu)
     ];
   });
 
@@ -1222,7 +1274,7 @@ function exportAttendance(format = 'csv') {
       (r.telat === true || r.telat === 1 || r.telat === 'true') ? 'HADIR (TELAT)' : 'HADIR',
       formatSessionLabel(r.session_id, r.session_name),
       r.date || r.tap_date || date,
-      r.waktu
+      formatTime24Hour(r.waktu)
     ];
   });
 
@@ -1268,7 +1320,7 @@ async function exportAllAttendance(format = 'csv') {
       (r.telat === true || r.telat === 1 || r.telat === 'true') ? 'HADIR (TELAT)' : 'HADIR',
       formatSessionLabel(r.session_id, r.session_name),
       r.date || r.tap_date || '-',
-      r.waktu
+      formatTime24Hour(r.waktu)
     ];
   });
 
@@ -1377,8 +1429,10 @@ function formatDate(str) {
   }
   const d = new Date(str);
   if (isNaN(d.getTime())) return str;
+  const h = String(d.getHours()).padStart(2, '0');
+  const m = String(d.getMinutes()).padStart(2, '0');
   return d.toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' }).toUpperCase()
-       + ' ' + d.toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' }).replace(/:/g, '.');
+       + ` ${h}:${m}`;
 }
 
 // Monitoring status perangkat ESP8266
