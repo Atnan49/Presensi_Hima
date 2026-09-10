@@ -120,6 +120,9 @@ if ($type === 'students') {
             <th>UID Kartu</th>
             <th>Nama Mahasiswa</th>
             <th>NIM</th>
+            <th>Kategori</th>
+            <th>Bidang</th>
+            <th>Jabatan</th>
             <th>Total Hadir</th>
             <th>Terdaftar Sejak</th>
           </tr>
@@ -131,6 +134,9 @@ if ($type === 'students') {
             <td class="td-uid"><?= htmlspecialchars($r['uid']) ?></td>
             <td style="font-weight: 600;"><?= htmlspecialchars($r['name']) ?></td>
             <td class="nim"><?= htmlspecialchars($r['nim'] ?: '-') ?></td>
+            <td class="text-center"><span class="badge badge-cat"><?= htmlspecialchars($r['category'] ?: 'Anggota') ?></span></td>
+            <td class="text-center"><?= htmlspecialchars($r['division'] ?: '-') ?></td>
+            <td class="text-center"><?= htmlspecialchars($r['position'] ?: '-') ?></td>
             <td class="text-center" style="font-weight: bold; color: #0284c7;"><?= $r['total_hadir'] ?>x</td>
             <td class="text-center"><?= htmlspecialchars($r['created_at']) ?></td>
           </tr>

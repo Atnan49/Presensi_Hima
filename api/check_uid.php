@@ -68,8 +68,9 @@ if (!$activeEvent) {
 $eventId   = $activeEvent ? (int)$activeEvent['id'] : 1;
 $eventName = $activeEvent ? $activeEvent['name'] : 'Kegiatan HIMA Umum';
 $startTime = ($activeEvent && !empty($activeEvent['start_time'])) ? $activeEvent['start_time'] : '08:00:00';
+$targetAudience = $activeEvent['target_audience'] ?? 'all';
 
-// 3. Validasi Kepanitiaan: Hanya mahasiswa yang terdaftar sebagai panitia yang diizinkan absen
+// 3. Validasi Target Audiens & Kepanitiaan
 $isCommittee   = false;
 $committeeRole = '';
 $committeeDiv  = '';
@@ -118,18 +119,42 @@ if (!$isCommittee) {
 // 3c. Cek jika data mahasiswa memiliki jabatan kepanitiaan (position)
 if (!$isCommittee && !empty($student['position'])) {
     $posLower = strtolower($student['position']);
-    if (strpos($posLower, 'panitia') !== false || strpos($posLower, 'ketua') !== false || strpos($posLower, 'sie') !== false || strpos($posLower, 'koor') !== false) {
-        $isCommittee   = true;
-        $committeeRole = $student['position'];
-        $committeeDiv  = $student['division'] ?? '';
+    $keywords = ['panitia', 'ketua', 'sie', 'koor', 'sekretaris', 'bendahara', 'pengurus', 'divisi', 'bidang'];
+    foreach ($keywords as $kw) {
+        if (strpos($posLower, $kw) !== false) {
+            $isCommittee   = true;
+            $committeeRole = $student['position'];
+            $committeeDiv  = $student['division'] ?? '';
+            break;
+        }
     }
 }
 
-// Tolak presensi jika bukan panitia
-if (!$isCommittee) {
+// Validasi hak akses sesuai target_audience acara
+$isAllowed = false;
+$rejectMsg = '';
+
+if ($targetAudience === 'all') {
+    $isAllowed = true;
+} elseif ($targetAudience === 'bpi_bph') {
+    $cat = strtoupper(trim($student['category'] ?? ''));
+    if (in_array($cat, ['BPI', 'BPH'], true) || $isCommittee) {
+        $isAllowed = true;
+    } else {
+        $rejectMsg = 'Akses Ditolak: Acara ini khusus untuk pengurus BPI & BPH.';
+    }
+} else { // committee_only
+    if ($isCommittee) {
+        $isAllowed = true;
+    } else {
+        $rejectMsg = 'Akses Ditolak: Hanya mahasiswa yang terdaftar sebagai panitia yang dapat melakukan presensi.';
+    }
+}
+
+if (!$isAllowed) {
     sendJSON([
         'success'          => false,
-        'status'           => 'not_committee',
+        'status'           => 'not_allowed',
         'uid'              => $uid,
         'name'             => $student['name'],
         'nim'              => $student['nim'],
@@ -137,7 +162,7 @@ if (!$isCommittee) {
         'session'          => $sessionName,
         'has_active_event' => $hasActive,
         'event_name'       => $eventName,
-        'message'          => 'Akses Ditolak: Hanya mahasiswa yang terdaftar sebagai panitia yang dapat melakukan presensi.',
+        'message'          => $rejectMsg,
     ], 403);
     exit;
 }

@@ -86,7 +86,7 @@ if ($method === 'GET') {
         } else {
             // Rekap per tanggal (default: hari ini)
             $sql = "
-                SELECT a.id, a.uid, s.name, s.nim,
+                SELECT a.id, a.uid, s.name, s.nim, s.category, s.division, s.position,
                        DATE_FORMAT(a.tap_time, '%d/%m/%Y %H:%i:%s') AS waktu,
                        a.tap_date, a.event_id,
                        COALESCE(a.session_id, 'sesi_1') AS session_id,
@@ -103,7 +103,7 @@ if ($method === 'GET') {
                 $sql .= " AND a.session_id = ?";
                 $params[] = $sessionId;
             }
-            $sql .= " ORDER BY a.tap_time ASC";
+            $sql .= " ORDER BY a.tap_time DESC";
             $stmt = $db->prepare($sql);
             $stmt->execute($params);
         }
@@ -114,7 +114,7 @@ if ($method === 'GET') {
             ensureDatabaseTables($db);
             // Fallback query tanpa a.telat
             $sqlFallback = "
-                SELECT a.id, a.uid, s.name, s.nim,
+                SELECT a.id, a.uid, s.name, s.nim, s.category, s.division, s.position,
                        DATE_FORMAT(a.tap_time, '%d/%m/%Y %H:%i:%s') AS waktu,
                        a.tap_date, a.event_id,
                        COALESCE(a.session_id, 'sesi_1') AS session_id,
@@ -125,7 +125,7 @@ if ($method === 'GET') {
                 JOIN students s ON s.id = a.student_id
                 LEFT JOIN events e ON e.id = a.event_id
                 WHERE a.tap_date = ?
-                ORDER BY a.tap_time ASC
+                ORDER BY a.tap_time DESC
             ";
             $stmt = $db->prepare($sqlFallback);
             $stmt->execute([$date]);
@@ -137,7 +137,13 @@ if ($method === 'GET') {
 
     // Hitung statistik dengan memperhatikan target audience acara jika ada
     $targetAudience = 'all';
-    if ($eventId > 0) {
+    if ($eventId <= 0) {
+        $rowActive = $db->query("SELECT id, target_audience FROM events WHERE is_active = 1 LIMIT 1")->fetch();
+        if ($rowActive) {
+            $eventId = (int)$rowActive['id'];
+            $targetAudience = $rowActive['target_audience'] ?? 'all';
+        }
+    } else {
         $stmtAud = $db->prepare("SELECT target_audience FROM events WHERE id = ? LIMIT 1");
         $stmtAud->execute([$eventId]);
         $rowAud = $stmtAud->fetch();

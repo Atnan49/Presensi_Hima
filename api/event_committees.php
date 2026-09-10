@@ -122,16 +122,23 @@ if ($method === 'DELETE') {
     $id        = (int)($_GET['id'] ?? 0);
     $eventId   = (int)($_GET['event_id'] ?? 0);
     $studentId = (int)($_GET['student_id'] ?? 0);
+    $uid       = trim($_GET['uid'] ?? '');
 
     try {
-        if ($id > 0) {
-            $stmt = $db->prepare("DELETE FROM event_committees WHERE id = ?");
-            $stmt->execute([$id]);
-        } else if ($eventId > 0 && $studentId > 0) {
+        if ($eventId > 0 && !empty($uid)) {
+            $stmt = $db->prepare("DELETE ec FROM event_committees ec JOIN students s ON s.id = ec.student_id WHERE ec.event_id = ? AND s.uid = ?");
+            $stmt->execute([$eventId, $uid]);
+        } elseif ($eventId > 0 && $studentId > 0) {
             $stmt = $db->prepare("DELETE FROM event_committees WHERE event_id = ? AND student_id = ?");
             $stmt->execute([$eventId, $studentId]);
+        } elseif ($eventId > 0 && $id > 0) {
+            $stmt = $db->prepare("DELETE FROM event_committees WHERE id = ? AND event_id = ?");
+            $stmt->execute([$id, $eventId]);
+        } elseif ($id > 0) {
+            $stmt = $db->prepare("DELETE FROM event_committees WHERE id = ?");
+            $stmt->execute([$id]);
         } else {
-            sendJSON(['success' => false, 'message' => 'ID panitia atau (event_id & student_id) wajib disertakan'], 400);
+            sendJSON(['success' => false, 'message' => 'Parameter tidak lengkap'], 400);
         }
     } catch (\Throwable $e) {
         ensureDatabaseTables($db);

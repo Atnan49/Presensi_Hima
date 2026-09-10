@@ -1150,14 +1150,17 @@ function downloadExcel(filename, title, period, headers, rows) {
         return { wch: Math.max(maxLen + 4, 10) };
       });
 
-      // Override lebar khusus agar nyaman
+      // Override lebar khusus agar nyaman (10 kolom presensi)
       if (colWidths[0]) colWidths[0].wch = 6;  // No
       if (colWidths[1]) colWidths[1].wch = 28; // Nama
       if (colWidths[2]) colWidths[2].wch = 18; // NIM
-      if (colWidths[3]) colWidths[3].wch = 20; // Status Kehadiran
-      if (colWidths[4]) colWidths[4].wch = 20; // Sesi
-      if (colWidths[5]) colWidths[5].wch = 14; // Tanggal
-      if (colWidths[6]) colWidths[6].wch = 12; // Jam Tap
+      if (colWidths[3]) colWidths[3].wch = 18; // Kategori Struktur
+      if (colWidths[4]) colWidths[4].wch = 18; // Bidang
+      if (colWidths[5]) colWidths[5].wch = 20; // Jabatan Panitia
+      if (colWidths[6]) colWidths[6].wch = 18; // Status Kehadiran
+      if (colWidths[7]) colWidths[7].wch = 20; // Sesi Presensi
+      if (colWidths[8]) colWidths[8].wch = 14; // Tanggal
+      if (colWidths[9]) colWidths[9].wch = 12; // Jam Tap
 
       ws['!cols'] = colWidths;
 
@@ -1203,7 +1206,10 @@ function downloadExcel(filename, title, period, headers, rows) {
         <col width="50">
         <col width="220">
         <col width="140">
+        <col width="140">
+        <col width="140">
         <col width="160">
+        <col width="140">
         <col width="160">
         <col width="120">
         <col width="100">
@@ -1224,12 +1230,12 @@ function downloadExcel(filename, title, period, headers, rows) {
           <tr style="${i % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
             ${r.map((c, colIdx) => {
               let cls = '';
-              if (colIdx === 0) cls = 'text-center';        // No
-              else if (colIdx === 2) cls = 'txt';            // NIM
-              else if (colIdx === 3 || String(c).includes('HADIR') || String(c).includes('TELAT')) {
+              if (colIdx === 0) cls = 'text-center';
+              else if (colIdx === 2) cls = 'txt';
+              else if (String(c).includes('HADIR') || String(c).includes('TELAT')) {
                 cls = String(c).includes('TELAT') ? 'badge-late' : 'badge';
               }
-              else if (colIdx === 4 || colIdx === 5 || colIdx === 6) cls = 'text-center'; // Sesi, Tanggal, Jam
+              else if (colIdx >= 7) cls = 'text-center';
               return `<td class="${cls}">${c ?? '-'}</td>`;
             }).join('')}
           </tr>
@@ -2002,8 +2008,8 @@ async function loadCommittees(eventId) {
   let cloudList = null;
   if (window.cloudEventCommittees && window.cloudEventCommittees[eventId]) {
     const raw = window.cloudEventCommittees[eventId];
-    cloudList = Object.keys(raw).map((uid, idx) => ({
-      id: idx + 1,
+    cloudList = Object.keys(raw).map((uid) => ({
+      id: raw[uid].id || 0,
       uid,
       name: raw[uid].name || '-',
       nim: raw[uid].nim || '-',

@@ -212,9 +212,11 @@ export function isStudentCommittee(uid, eventId = null) {
   }
 
   // 3. Cek pada data mahasiswa di cloudUsers (position/role)
+  const committeeKeywords = ['panitia', 'ketua', 'sie', 'koor', 'sekretaris', 'bendahara', 'pengurus', 'divisi', 'bidang'];
   if (window.cloudUsers && window.cloudUsers[uid]) {
     const pos = (window.cloudUsers[uid].position || '').toLowerCase();
-    if (pos.includes('panitia') || pos.includes('ketua') || pos.includes('sie') || pos.includes('koor')) {
+    const role = (window.cloudUsers[uid].role || '').toLowerCase();
+    if (committeeKeywords.some(kw => pos.includes(kw) || role.includes(kw))) {
       return true;
     }
   }
@@ -222,9 +224,10 @@ export function isStudentCommittee(uid, eventId = null) {
   // 4. Cek pada state.students jika ada
   if (window.state && Array.isArray(window.state.students)) {
     const s = window.state.students.find(st => st.uid === uid);
-    if (s && s.position) {
-      const pos = s.position.toLowerCase();
-      if (pos.includes('panitia') || pos.includes('ketua') || pos.includes('sie') || pos.includes('koor')) {
+    if (s && (s.position || s.role)) {
+      const pos = (s.position || '').toLowerCase();
+      const role = (s.role || '').toLowerCase();
+      if (committeeKeywords.some(kw => pos.includes(kw) || role.includes(kw))) {
         return true;
       }
     }
@@ -233,6 +236,22 @@ export function isStudentCommittee(uid, eventId = null) {
   return false;
 }
 window.isStudentCommittee = isStudentCommittee;
+
+function isStudentAllowedForEvent(uid, studentInfo) {
+  const activeEv = (window.state && window.state.activeEvent) || window.cloudActiveEvent || {};
+  const targetAud = activeEv.target_audience || 'all';
+  const isComm = isStudentCommittee(uid);
+
+  if (targetAud === 'all') {
+    return { allowed: true, isComm };
+  }
+  if (targetAud === 'bpi_bph') {
+    const cat = ((studentInfo && studentInfo.category) || '').toUpperCase();
+    const isBpiBph = cat.includes('BPI') || cat.includes('BPH');
+    return { allowed: isBpiBph || isComm, isComm, reason: 'Khusus BPI & BPH' };
+  }
+  return { allowed: isComm, isComm, reason: 'Khusus Panitia' };
+}
 
 export function initFirebaseListeners() {
   console.log("[Firebase] Menginisialisasi Realtime Listener...");
@@ -358,21 +377,24 @@ export function initFirebaseListeners() {
     if (data && typeof data === 'object') {
       const keys = Object.keys(data);
       if (keys.length > 0) {
-        const validCommitteeLogs = [];
-        let latestRejectedName   = null;
+        const validLogs = [];
+        let latestRejectedName = null;
+        let latestRejectReason = 'Bukan Panitia';
 
         keys.forEach((k) => {
           const item        = data[k] || {};
           const studentInfo = (cloudUsers && cloudUsers[item.uid]) || {};
           const parsed      = parseLogDateTime(item, k);
-          const isComm      = isStudentCommittee(item.uid);
+          const { allowed, isComm, reason } = isStudentAllowedForEvent(item.uid, studentInfo);
 
-          if (isComm) {
-            validCommitteeLogs.push({
+          if (allowed) {
+            validLogs.push({
               id: k,
               uid: item.uid || '-',
               name: item.name || studentInfo.name || `Mahasiswa (${item.uid})`,
               nim: studentInfo.nim || item.nim || '-',
+              category: studentInfo.category || item.category || 'Anggota',
+              division: studentInfo.division || item.division || '-',
               session_id: item.session_id || 'sesi_1',
               session_name: item.session_name || 'Sesi 1 (Datang)',
               event_name: item.event_name || 'Kegiatan HIMA Umum',
@@ -380,48 +402,45 @@ export function initFirebaseListeners() {
               waktu: parsed.waktu,
               date: parsed.date,
               timestamp: parsed.timestamp,
-              is_committee: true
+              is_committee: isComm
             });
           } else {
-            // Bukan panitia: tidak dimasukkan ke dalam daftar hadir resmi
             latestRejectedName = item.name || studentInfo.name || `UID: ${item.uid}`;
-            // Bersihkan penanda kehadiran agar kartu tidak terkunci sebagai sudah absen
+            latestRejectReason = reason || 'Akses Ditolak';
             if (item.date && item.session_id && item.uid) {
               set(ref(db, `attendance_today/${item.date}_${item.session_id}/${item.uid}`), null);
             }
           }
         });
 
-        // Urutkan presensi panitia dari yang terbaru ke terlama
-        validCommitteeLogs.sort((a, b) => b.timestamp - a.timestamp);
-        cloudLogs = validCommitteeLogs;
+        validLogs.sort((a, b) => b.timestamp - a.timestamp);
+        cloudLogs = validLogs;
         window.cloudLogs = cloudLogs;
 
-        // Cek apakah ketukan paling baru di data mentah adalah mahasiswa non-panitia
         const latestKey       = keys[keys.length - 1];
         const latestRawItem   = data[latestKey] || {};
-        const isLatestPanitia = isStudentCommittee(latestRawItem.uid);
+        const latestInfo      = (cloudUsers && cloudUsers[latestRawItem.uid]) || {};
+        const latestCheck     = isStudentAllowedForEvent(latestRawItem.uid, latestInfo);
 
-        if (!isInitialLoad && !isLatestPanitia && latestRejectedName && typeof window.showToast === 'function') {
-          window.showToast(`Presensi Ditolak: ${latestRejectedName} bukan panitia!`, 'danger');
+        if (!isInitialLoad && !latestCheck.allowed && latestRejectedName && typeof window.showToast === 'function') {
+          window.showToast(`Presensi Ditolak: ${latestRejectedName} (${latestRejectReason})`, 'danger');
         }
 
         const latestLog = cloudLogs[0];
-        console.log("[Firebase] Log Presensi Panitia Terkini:", latestLog);
+        console.log("[Firebase] Log Presensi Terkini:", latestLog);
 
-        // Update Live Feed di Dashboard dengan log panitia terbaru
         if (latestLog && typeof window.updateLiveFeed === 'function') {
           window.updateLiveFeed(latestLog.name, formatTime24Hour(latestLog.waktu), !isInitialLoad, latestLog.telat);
         }
 
-        // Tampilkan Toast jika ketukan panitia berhasil
-        if (!isInitialLoad && latestLog && typeof window.showToast === 'function' && isLatestPanitia) {
+        if (!isInitialLoad && latestLog && typeof window.showToast === 'function' && latestCheck.allowed) {
           const sessLabel   = latestLog.session_name ? ` [${latestLog.session_name}]` : '';
           const displayTime = formatTime24Hour(latestLog.waktu);
+          const tag = latestLog.is_committee ? 'Panitia' : 'Mahasiswa';
           if (latestLog.telat) {
-            window.showToast(`Presensi Panitia (TELAT): ${latestLog.name}${sessLabel} (${displayTime})`, 'warning');
+            window.showToast(`Presensi ${tag} (TELAT): ${latestLog.name}${sessLabel} (${displayTime})`, 'warning');
           } else {
-            window.showToast(`Presensi Panitia: ${latestLog.name}${sessLabel} (${displayTime})`, 'success');
+            window.showToast(`Presensi ${tag}: ${latestLog.name}${sessLabel} (${displayTime})`, 'success');
           }
         }
 
@@ -468,8 +487,9 @@ export function initFirebaseListeners() {
     const data = snapshot.val() || {};
     cloudEventCommittees = data;
     window.cloudEventCommittees = data;
-    if (typeof window.renderCommitteesTable === 'function' && window.activeCommitteeEventId) {
-      window.renderCommitteesTable(window.activeCommitteeEventId);
+    const currentEvId = (window.state && window.state.currentCommitteeEvent) || window.activeCommitteeEventId;
+    if (currentEvId && typeof window.loadCommittees === 'function') {
+      window.loadCommittees(currentEvId);
     }
     if (typeof window.renderEventsTable === 'function' && window.state && Array.isArray(window.state.events)) {
       window.renderEventsTable(window.state.events);

@@ -563,6 +563,7 @@ void prosesTapKartu(String uid) {
   String position = "";
   String role = "";
   String division = "";
+  String category = "";
 
   if (Firebase.RTDB.getJSON(&fbdo, pathUser)) {
     if (fbdo.dataType() == "json") {
@@ -587,6 +588,10 @@ void prosesTapKartu(String uid) {
       if (jsonUser.get(jsonData, "division")) {
         division = jsonData.stringValue;
         if (division == "null") division = "";
+      }
+      if (jsonUser.get(jsonData, "category")) {
+        category = jsonData.stringValue;
+        if (category == "null") category = "";
       }
       if (nama.length() > 0 && nama != "null") {
         userFound = true;
@@ -640,6 +645,12 @@ void prosesTapKartu(String uid) {
     if (Firebase.RTDB.getString(&fbdo, "/active_event/name")) {
       cachedEventName = fbdo.stringData();
       if (cachedEventName == "null") cachedEventName = "";
+    }
+  }
+  if (cachedTargetAudience.length() == 0) {
+    if (Firebase.RTDB.getString(&fbdo, "/active_event/target_audience")) {
+      cachedTargetAudience = fbdo.stringData();
+      if (cachedTargetAudience == "null") cachedTargetAudience = "all";
     }
   }
 
@@ -707,15 +718,39 @@ void prosesTapKartu(String uid) {
     }
   }
 
-  // JIKA BUKAN PANITIA: Tolak absensi!
-  if (!isPanitia) {
-    Serial.println("[DITOLAK] Bukan Panitia: " + nama + " (" + uid + ")");
+  // Validasi hak akses sesuai target audience acara
+  bool isAllowed = false;
+  String rejectMsg = "BUKAN PANITIA!";
+  String rejectSub = "Khusus Panitia!";
+
+  if (cachedTargetAudience == "all" || cachedTargetAudience.length() == 0) {
+    isAllowed = true;
+  } else if (cachedTargetAudience == "bpi_bph") {
+    String catCheck = category;
+    catCheck.toUpperCase();
+    if (catCheck.indexOf("BPI") >= 0 || catCheck.indexOf("BPH") >= 0 || isPanitia) {
+      isAllowed = true;
+    } else {
+      rejectMsg = "KHUSUS BPI & BPH";
+      rejectSub = "Bukan BPI/BPH!";
+    }
+  } else {
+    if (isPanitia) {
+      isAllowed = true;
+    } else {
+      rejectMsg = "BUKAN PANITIA!";
+      rejectSub = "Khusus Panitia!";
+    }
+  }
+
+  if (!isAllowed) {
+    Serial.println("[DITOLAK] " + rejectMsg + ": " + nama + " (" + uid + ")");
     buzzError();
-    lcdPrint(centerText("BUKAN PANITIA!").c_str(), centerText("AKSES DITOLAK!").c_str());
+    lcdPrint(centerText(rejectMsg).c_str(), centerText("AKSES DITOLAK!").c_str());
 
     // State machine untuk layar penjelasan (Non-blocking)
     pendingLcdLine1 = centerText(namaDisplay);
-    pendingLcdLine2 = centerText("Khusus Panitia!");
+    pendingLcdLine2 = centerText(rejectSub);
     isLcdStandby = false;
     lcdPhase = 2;
     lcdResetTime = millis() + 1800;
