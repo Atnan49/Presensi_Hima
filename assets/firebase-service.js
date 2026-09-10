@@ -59,6 +59,85 @@ function getLocalDateString(d = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+// Helper format waktu 24 jam konsisten (HH:mm atau HH:mm:ss)
+export function formatTime24Hour(val, withSeconds = false) {
+  if (!val && val !== 0) return '-';
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return '-';
+    const h = String(val.getHours()).padStart(2, '0');
+    const m = String(val.getMinutes()).padStart(2, '0');
+    if (withSeconds) {
+      const s = String(val.getSeconds()).padStart(2, '0');
+      return `${h}:${m}:${s}`;
+    }
+    return `${h}:${m}`;
+  }
+  if (typeof val === 'number') {
+    const ms = val < 1e11 ? val * 1000 : val;
+    const d = new Date(ms);
+    if (!isNaN(d.getTime())) {
+      const h = String(d.getHours()).padStart(2, '0');
+      const m = String(d.getMinutes()).padStart(2, '0');
+      if (withSeconds) {
+        const s = String(d.getSeconds()).padStart(2, '0');
+        return `${h}:${m}:${s}`;
+      }
+      return `${h}:${m}`;
+    }
+  }
+
+  const str = String(val).trim();
+  if (!str) return '-';
+
+  // 1. Deteksi AM / PM (12-hour format) di mana saja dalam string
+  const ampmMatch = str.match(/(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\s*([ap]\.?m\.?)/i);
+  if (ampmMatch) {
+    let h = parseInt(ampmMatch[1], 10);
+    const m = ampmMatch[2];
+    const s = ampmMatch[3];
+    const isPm = ampmMatch[4].toLowerCase().startsWith('p');
+    if (isPm && h < 12) h += 12;
+    if (!isPm && h === 12) h = 0;
+    const hStr = String(h).padStart(2, '0');
+    if (withSeconds) return `${hStr}:${m}:${s || '00'}`;
+    return `${hStr}:${m}`;
+  }
+
+  // 2. Deteksi format waktu standar dengan titik dua (HH:mm:ss atau HH:mm)
+  const colonTimeMatch = str.match(/(?:^|\s|T)([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?(?:\s|$|[A-Z])/i);
+  if (colonTimeMatch) {
+    const h = colonTimeMatch[1].padStart(2, '0');
+    const m = colonTimeMatch[2];
+    const s = colonTimeMatch[3];
+    if (withSeconds) return `${h}:${m}:${s || '00'}`;
+    return `${h}:${m}`;
+  }
+
+  // 3. Deteksi format waktu Indonesia dengan titik (cth: "14.30" atau "08.15.00")
+  const dotTimeMatch = str.match(/(?:^|\s)([01]?\d|2[0-3])\.([0-5]\d)(?:\.([0-5]\d))?(?:\s|$|wib)/i);
+  if (dotTimeMatch) {
+    const h = dotTimeMatch[1].padStart(2, '0');
+    const m = dotTimeMatch[2];
+    const s = dotTimeMatch[3];
+    if (withSeconds) return `${h}:${m}:${s || '00'}`;
+    return `${h}:${m}`;
+  }
+
+  // 4. Coba parse sebagai Date jika ada ISO string
+  const parsedDate = new Date(str);
+  if (!isNaN(parsedDate.getTime()) && str.includes('T')) {
+    const h = String(parsedDate.getHours()).padStart(2, '0');
+    const m = String(parsedDate.getMinutes()).padStart(2, '0');
+    if (withSeconds) {
+      const s = String(parsedDate.getSeconds()).padStart(2, '0');
+      return `${h}:${m}:${s}`;
+    }
+    return `${h}:${m}`;
+  }
+
+  return str.replace(/\s*[ap]\.?m\.?/gi, '');
+}
+
 // Helper ekstrak waktu & tanggal akurat dari log
 function parseLogDateTime(item, key) {
   let waktuStr = item.waktu || null;
@@ -101,20 +180,11 @@ function parseLogDateTime(item, key) {
     const h = String(now.getHours()).padStart(2, '0');
     const m = String(now.getMinutes()).padStart(2, '0');
     waktuStr = `${h}:${m}`;
-  } else {
-    // Normalisasi waktu ke format 24 jam jika ada format 12 jam (AM/PM)
-    const ampmMatch = String(waktuStr).match(/^(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\s*([ap]m)$/i);
-    if (ampmMatch) {
-      let h = parseInt(ampmMatch[1], 10);
-      const m = ampmMatch[2];
-      const isPm = ampmMatch[4].toLowerCase() === 'pm';
-      if (isPm && h < 12) h += 12;
-      if (!isPm && h === 12) h = 0;
-      waktuStr = `${String(h).padStart(2, '0')}:${m}`;
-    } else {
-      waktuStr = waktuStr.replace(/^(\d{1,2})\.(\d{2})$/, '$1:$2');
-    }
   }
+
+  // Selalu normalisasi waktuStr ke format 24 jam ketat (HH:mm)
+  waktuStr = formatTime24Hour(waktuStr);
+
   if (!dateStr) {
     dateStr = getLocalDateString(new Date());
   }
@@ -275,16 +345,17 @@ export function initFirebaseListeners() {
 
         // Update Live Feed di Dashboard dengan log terbaru (hanya bunyikan suara jika bukan initial load)
         if (latestLog && typeof window.updateLiveFeed === 'function') {
-          window.updateLiveFeed(latestLog.name, latestLog.waktu, !isInitialLoad, latestLog.telat);
+          window.updateLiveFeed(latestLog.name, formatTime24Hour(latestLog.waktu), !isInitialLoad, latestLog.telat);
         }
 
         // Tampilkan Toast jika bukan saat halaman baru pertama kali dibuka
         if (!isInitialLoad && latestLog && typeof window.showToast === 'function') {
           const sessLabel = latestLog.session_name ? ` [${latestLog.session_name}]` : '';
+          const displayTime = formatTime24Hour(latestLog.waktu);
           if (latestLog.telat) {
-            window.showToast(`Presensi TELAT: ${latestLog.name}${sessLabel} (${latestLog.waktu})`, 'warning');
+            window.showToast(`Presensi TELAT: ${latestLog.name}${sessLabel} (${displayTime})`, 'warning');
           } else {
-            window.showToast(`Presensi: ${latestLog.name}${sessLabel} (${latestLog.waktu})`, 'success');
+            window.showToast(`Presensi: ${latestLog.name}${sessLabel} (${displayTime})`, 'success');
           }
         }
 

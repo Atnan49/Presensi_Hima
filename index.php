@@ -634,12 +634,14 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
 
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
       <div class="form-group">
-        <label class="form-label">Jam Mulai (WIB) *</label>
-        <input type="time" id="event-start-time" value="08:00" required>
+        <label class="form-label">Jam Mulai (Format 24 Jam) *</label>
+        <input type="text" id="event-start-time" class="time-24h-input font-mono font-bold" placeholder="08:00" value="08:00" maxlength="5" required>
+        <div class="text-xs text-muted font-mono mt-1">Format 24 Jam (00:00 - 23:59 WIB)</div>
       </div>
       <div class="form-group">
-        <label class="form-label">Jam Selesai (WIB)</label>
-        <input type="time" id="event-end-time" placeholder="Opsional">
+        <label class="form-label">Jam Selesai (Format 24 Jam)</label>
+        <input type="text" id="event-end-time" class="time-24h-input font-mono font-bold" placeholder="17:00 (Opsional)" maxlength="5">
+        <div class="text-xs text-muted font-mono mt-1">Opsional, format 24 jam (HH:mm)</div>
       </div>
     </div>
 

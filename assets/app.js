@@ -236,6 +236,7 @@ function showPanel(name, updateHistory = true) {
 function formatTime24Hour(val, withSeconds = false) {
   if (!val && val !== 0) return '-';
   if (val instanceof Date) {
+    if (isNaN(val.getTime())) return '-';
     const h = String(val.getHours()).padStart(2, '0');
     const m = String(val.getMinutes()).padStart(2, '0');
     if (withSeconds) {
@@ -244,34 +245,73 @@ function formatTime24Hour(val, withSeconds = false) {
     }
     return `${h}:${m}`;
   }
+  if (typeof val === 'number') {
+    const ms = val < 1e11 ? val * 1000 : val;
+    const d = new Date(ms);
+    if (!isNaN(d.getTime())) {
+      const h = String(d.getHours()).padStart(2, '0');
+      const m = String(d.getMinutes()).padStart(2, '0');
+      if (withSeconds) {
+        const s = String(d.getSeconds()).padStart(2, '0');
+        return `${h}:${m}:${s}`;
+      }
+      return `${h}:${m}`;
+    }
+  }
+
   const str = String(val).trim();
   if (!str) return '-';
 
-  // Deteksi format 12 jam (cth: "10:15:20 PM", "08.15 AM", "2:30 pm")
-  const ampmMatch = str.match(/^(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\s*([ap]m)$/i);
+  // 1. Deteksi AM / PM (12-hour format) di mana saja dalam string
+  // Contoh: "10:15:20 PM", "2026-09-11 10:15:00 PM", "08.15 am", "2:30:00 p.m. WIB"
+  const ampmMatch = str.match(/(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\s*([ap]\.?m\.?)/i);
   if (ampmMatch) {
     let h = parseInt(ampmMatch[1], 10);
     const m = ampmMatch[2];
     const s = ampmMatch[3];
-    const isPm = ampmMatch[4].toLowerCase() === 'pm';
+    const isPm = ampmMatch[4].toLowerCase().startsWith('p');
     if (isPm && h < 12) h += 12;
     if (!isPm && h === 12) h = 0;
     const hStr = String(h).padStart(2, '0');
-    if (withSeconds && s) return `${hStr}:${m}:${s}`;
+    if (withSeconds) return `${hStr}:${m}:${s || '00'}`;
     return `${hStr}:${m}`;
   }
 
-  // Jika string datetime lengkap (cth: "2026-09-10 14:30:00" atau "10/09/2026 14:30:00")
-  const timePart = str.match(/\b(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\b/);
-  if (timePart) {
-    const h = timePart[1].padStart(2, '0');
-    const m = timePart[2];
-    const s = timePart[3];
-    if (withSeconds && s) return `${h}:${m}:${s}`;
+  // 2. Deteksi format waktu standar dengan titik dua (HH:mm:ss atau HH:mm)
+  // Bisa berdiri sendiri atau di akhir tanggal (cth: "2026-09-11 14:30:00", "14:30")
+  const colonTimeMatch = str.match(/(?:^|\s|T)([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?(?:\s|$|[A-Z])/i);
+  if (colonTimeMatch) {
+    const h = colonTimeMatch[1].padStart(2, '0');
+    const m = colonTimeMatch[2];
+    const s = colonTimeMatch[3];
+    if (withSeconds) return `${h}:${m}:${s || '00'}`;
     return `${h}:${m}`;
   }
 
-  return str;
+  // 3. Deteksi format waktu Indonesia dengan titik (cth: "14.30" atau "08.15.00")
+  const dotTimeMatch = str.match(/(?:^|\s)([01]?\d|2[0-3])\.([0-5]\d)(?:\.([0-5]\d))?(?:\s|$|wib)/i);
+  if (dotTimeMatch) {
+    const h = dotTimeMatch[1].padStart(2, '0');
+    const m = dotTimeMatch[2];
+    const s = dotTimeMatch[3];
+    if (withSeconds) return `${h}:${m}:${s || '00'}`;
+    return `${h}:${m}`;
+  }
+
+  // 4. Coba parse sebagai Date jika ada ISO string
+  const parsedDate = new Date(str);
+  if (!isNaN(parsedDate.getTime()) && str.includes('T')) {
+    const h = String(parsedDate.getHours()).padStart(2, '0');
+    const m = String(parsedDate.getMinutes()).padStart(2, '0');
+    if (withSeconds) {
+      const s = String(parsedDate.getSeconds()).padStart(2, '0');
+      return `${h}:${m}:${s}`;
+    }
+    return `${h}:${m}`;
+  }
+
+  // Fallback pengaman: hilangkan teks am/pm jika tersisa
+  return str.replace(/\s*[ap]\.?m\.?/gi, '');
 }
 window.formatTime24Hour = formatTime24Hour;
 
@@ -1420,7 +1460,7 @@ function formatDateOnly(str) {
   return isNaN(d.getTime()) ? str : d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
 }
 
-// Format tanggal dan waktu
+// Format tanggal dan waktu (24 jam)
 function formatDate(str) {
   if (!str) return '-';
   // Jika hanya string tanggal tanpa jam (YYYY-MM-DD), jangan munculkan jam palsu 07.00
@@ -1428,7 +1468,10 @@ function formatDate(str) {
     return formatDateOnly(str);
   }
   const d = new Date(str);
-  if (isNaN(d.getTime())) return str;
+  if (isNaN(d.getTime())) {
+    const t = formatTime24Hour(str);
+    return t !== '-' ? t : str;
+  }
   const h = String(d.getHours()).padStart(2, '0');
   const m = String(d.getMinutes()).padStart(2, '0');
   return d.toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' }).toUpperCase()
@@ -1601,9 +1644,9 @@ async function loadEvents(retry = 2) {
 
 function formatEventTime(startTime, endTime) {
   if (!startTime) return '';
-  const start = startTime.substring(0, 5);
+  const start = formatTime24Hour(startTime);
   if (endTime) {
-    const end = endTime.substring(0, 5);
+    const end = formatTime24Hour(endTime);
     return `${start} - ${end} WIB`;
   }
   return `${start} WIB`;
@@ -1771,8 +1814,10 @@ async function submitCreateEvent() {
   const name            = document.getElementById('event-name')?.value.trim();
   const description     = document.getElementById('event-desc')?.value.trim();
   const event_date      = document.getElementById('event-date')?.value || getLocalDateString();
-  const start_time      = document.getElementById('event-start-time')?.value || '08:00';
-  const end_time        = document.getElementById('event-end-time')?.value || null;
+  const rawStart        = document.getElementById('event-start-time')?.value || '08:00';
+  const start_time      = formatTime24Hour(rawStart);
+  const rawEnd          = document.getElementById('event-end-time')?.value?.trim();
+  const end_time        = rawEnd ? formatTime24Hour(rawEnd) : null;
   const target_audience = document.getElementById('event-target-audience')?.value || 'all';
   const is_active       = document.getElementById('event-active')?.checked ? 1 : 0;
 
@@ -2550,6 +2595,22 @@ document.addEventListener('DOMContentLoaded', () => {
   // Jalankan jam
   updateClock();
   setInterval(updateClock, 1000);
+
+  // Auto-format dan validasi input jam 24 jam (HH:mm)
+  document.querySelectorAll('.time-24h-input').forEach(input => {
+    input.addEventListener('input', (e) => {
+      let val = e.target.value.replace(/[^\d:]/g, '');
+      if (val.length === 2 && !val.includes(':') && e.inputType !== 'deleteContentBackward') {
+        val = val + ':';
+      }
+      e.target.value = val.substring(0, 5);
+    });
+    input.addEventListener('blur', (e) => {
+      if (e.target.value.trim()) {
+        e.target.value = formatTime24Hour(e.target.value);
+      }
+    });
+  });
 
   // Inisialisasi status audio toggle
   updateAudioToggleUI();

@@ -1069,6 +1069,12 @@ select:focus {
   transform: translate(-1px, -1px);
 }
 
+.time-24h-input {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
 .search-box {
   position: relative;
   display: inline-flex;
