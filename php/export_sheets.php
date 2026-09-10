@@ -12,17 +12,17 @@
 header("Content-Type: application/json; charset=utf-8");
 header("Access-Control-Allow-Origin: *");   // izinkan Google Apps Script
 
-// ── Token keamanan akses Google Apps Script ──────────────────
-$secretToken = getenv('SHEETS_SECRET_TOKEN') ?: 'presensi_rfid_2024';
-$token       = (string)($_GET['token'] ?? '');
+include "koneksi.php";
 
-if (empty($token) || !hash_equals($secretToken, $token)) {
+// ── Token keamanan akses Google Apps Script ──────────────────
+$secretToken = getenv('SHEETS_SECRET_TOKEN') ?: (defined('DEVICE_API_KEY') ? DEVICE_API_KEY : '');
+$token       = (string)($_GET['token'] ?? $_SERVER['HTTP_X_SHEETS_TOKEN'] ?? '');
+
+if (empty($secretToken) || empty($token) || !hash_equals($secretToken, $token)) {
     http_response_code(403);
-    echo json_encode(["status" => "error", "pesan" => "Akses ditolak: Token otentikasi tidak valid"]);
+    echo json_encode(["status" => "error", "pesan" => "Akses ditolak: Token otentikasi tidak valid atau belum dikonfigurasi"]);
     exit;
 }
-
-include "koneksi.php";
 
 $acara_id = isset($_GET['acara_id']) ? (int)$_GET['acara_id'] : 0;
 

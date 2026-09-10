@@ -9,7 +9,11 @@ $method = $_SERVER['REQUEST_METHOD'];
 
 // --- GET: Ambil data absensi ---
 if ($method === 'GET') {
-    $date      = isset($_GET['date'])       ? $_GET['date']              : date('Y-m-d');
+    checkApiAuth();
+    $date = isset($_GET['date']) ? trim($_GET['date']) : date('Y-m-d');
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+        $date = date('Y-m-d');
+    }
     $studentId = isset($_GET['student_id']) ? (int)$_GET['student_id']  : 0;
     $eventId   = isset($_GET['event_id'])   ? (int)$_GET['event_id']    : 0;
     $sessionId = trim($_GET['session_id'] ?? '');
@@ -131,8 +135,27 @@ if ($method === 'GET') {
         }
     }
 
-    // Hitung statistik dengan hadir unik (distinct student UID)
-    $totalMhs = (int)$db->query("SELECT COUNT(*) FROM students WHERE is_active = 1")->fetchColumn();
+    // Hitung statistik dengan memperhatikan target audience acara jika ada
+    $targetAudience = 'all';
+    if ($eventId > 0) {
+        $stmtAud = $db->prepare("SELECT target_audience FROM events WHERE id = ? LIMIT 1");
+        $stmtAud->execute([$eventId]);
+        $rowAud = $stmtAud->fetch();
+        if ($rowAud && !empty($rowAud['target_audience'])) {
+            $targetAudience = $rowAud['target_audience'];
+        }
+    }
+
+    if ($targetAudience === 'committee_only') {
+        $stmtTot = $db->prepare("SELECT COUNT(DISTINCT student_id) FROM event_committees WHERE event_id = ?");
+        $stmtTot->execute([$eventId]);
+        $totalMhs = (int)$stmtTot->fetchColumn();
+    } elseif ($targetAudience === 'bpi_bph') {
+        $totalMhs = (int)$db->query("SELECT COUNT(*) FROM students WHERE is_active = 1 AND category IN ('BPI', 'BPH')")->fetchColumn();
+    } else {
+        $totalMhs = (int)$db->query("SELECT COUNT(*) FROM students WHERE is_active = 1")->fetchColumn();
+    }
+
     $uniqueUids = [];
     foreach ($records as $r) {
         if (!empty($r['uid'])) {
@@ -176,6 +199,45 @@ if ($method === 'DELETE') {
     } else {
         sendJSON(['success' => false, 'message' => 'ID atau tanggal tidak valid'], 400);
     }
+}
+
+// --- PUT: Update status absensi (mis. toggle telat) ---
+if ($method === 'PUT') {
+    checkApiAuth();
+    $rawInput = file_get_contents('php://input');
+    $body     = json_decode($rawInput, true) ?: [];
+
+    $id     = (int)($body['id'] ?? 0);
+    $action = $body['action'] ?? '';
+
+    if ($action === 'toggle_late') {
+        if ($id > 0) {
+            $stmt = $db->prepare("SELECT a.id, a.telat, s.name FROM attendance a JOIN students s ON s.id = a.student_id WHERE a.id = ? LIMIT 1");
+            $stmt->execute([$id]);
+            $row = $stmt->fetch();
+            if (!$row) {
+                sendJSON(['success' => false, 'message' => 'Data absensi tidak ditemukan'], 404);
+            }
+
+            $explicitTelat = isset($body['telat']) && $body['telat'] !== null ? (int)$body['telat'] : null;
+            $newTelat = $explicitTelat !== null ? ($explicitTelat ? 1 : 0) : ((int)$row['telat'] === 1 ? 0 : 1);
+
+            $stmtUpd = $db->prepare("UPDATE attendance SET telat = ? WHERE id = ?");
+            $stmtUpd->execute([$newTelat, $id]);
+
+            sendJSON([
+                'success' => true,
+                'message' => 'Status kehadiran berhasil diperbarui',
+                'id'      => $id,
+                'name'    => $row['name'],
+                'telat'   => $newTelat
+            ]);
+        } else {
+            sendJSON(['success' => false, 'message' => 'ID absensi tidak valid'], 400);
+        }
+    }
+
+    sendJSON(['success' => false, 'message' => 'Action tidak didukung'], 400);
 }
 
 sendJSON(['success' => false, 'message' => 'Method tidak diizinkan'], 405);

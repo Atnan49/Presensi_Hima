@@ -60,13 +60,14 @@ $sessionNames = [
 $sessionName = $sessionNames[$sessionId] ?? ucfirst($sessionId);
 
 // Dapatkan acara aktif (fallback ke ID 1 / Kegiatan HIMA Umum jika belum ada yang diaktifkan)
-$activeEvent = $db->query("SELECT id, name FROM events WHERE is_active = 1 LIMIT 1")->fetch();
+$activeEvent = $db->query("SELECT id, name, start_time, end_time FROM events WHERE is_active = 1 LIMIT 1")->fetch();
 $hasActive = !empty($activeEvent);
 if (!$activeEvent) {
-    $activeEvent = $db->query("SELECT id, name FROM events ORDER BY id ASC LIMIT 1")->fetch();
+    $activeEvent = $db->query("SELECT id, name, start_time, end_time FROM events ORDER BY id ASC LIMIT 1")->fetch();
 }
 $eventId   = $activeEvent ? (int)$activeEvent['id'] : 1;
 $eventName = $activeEvent ? $activeEvent['name'] : 'Kegiatan HIMA Umum';
+$startTime = ($activeEvent && !empty($activeEvent['start_time'])) ? $activeEvent['start_time'] : '08:00:00';
 
 // 3. Cek apakah sudah absen pada sesi ini di acara dan tanggal yang sama
 $stmtAttend = $db->prepare("SELECT id FROM attendance WHERE student_id = ? AND event_id = ? AND tap_date = ? AND session_id = ? LIMIT 1");
@@ -89,8 +90,15 @@ if ($alreadyAttended) {
     exit;
 }
 
-// 4. Belum absen pada sesi ini → simpan absensi dengan proteksi duplicate race condition
-$isTelat = (!empty($_GET['telat']) && $_GET['telat'] !== '0') || (!empty($_GET['is_late']) && $_GET['is_late'] !== '0') || (isset($_GET['status']) && strtolower($_GET['status']) === 'telat') ? 1 : 0;
+// 4. Belum absen pada sesi ini → hitung status telat di server berdasarkan jam mulai acara
+$currentTime  = date('H:i:s');
+$isServerLate = ($currentTime > $startTime) ? 1 : 0;
+$isClientLate = (!empty($_GET['telat']) && $_GET['telat'] !== '0')
+             || (!empty($_GET['is_late']) && $_GET['is_late'] !== '0')
+             || (isset($_GET['status']) && strtolower($_GET['status']) === 'telat');
+
+$isTelat = ($sessionId === 'sesi_1' && $isServerLate) || $isClientLate ? 1 : 0;
+
 try {
     $stmtInsert = $db->prepare("
         INSERT INTO attendance (student_id, event_id, session_id, session_name, uid, tap_time, tap_date, telat)

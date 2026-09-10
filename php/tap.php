@@ -92,8 +92,12 @@ if (!$stmt4->execute()) {
 }
 $stmt4->close();
 
-// ── 7. Update last_uid & status ─────────────────────────────
-$conn->query("UPDATE last_uid SET uid = '" . $conn->real_escape_string($uid) . "' WHERE id = 1");
+$stmtUid = $conn->prepare("UPDATE last_uid SET uid = ? WHERE id = 1");
+if ($stmtUid) {
+    $stmtUid->bind_param("s", $uid);
+    $stmtUid->execute();
+    $stmtUid->close();
+}
 $statusMsg = ($status_hadir === 'hadir')
     ? "Hadir: " . $mhs['nama']
     : "Terlambat: " . $mhs['nama'];

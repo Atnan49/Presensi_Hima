@@ -8,6 +8,7 @@ $db     = getDB();
 $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method === 'GET') {
+    checkApiAuth();
     $stmt = $db->query("
         SELECT id, uid, first_seen, last_seen, tap_count
         FROM unknown_cards

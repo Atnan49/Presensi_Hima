@@ -854,7 +854,7 @@ $baseUrl = ($baseDir === '' ? '' : $baseDir) . '/';
 <div class="toast-container" id="toast-container"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-<script src="assets/app.js?v=<?= @filemtime(__DIR__ . '/assets/app.js') ?: time() ?>"></script>
+<script src="assets/app.js?v=<?= @filemtime(__DIR__ . '/assets/app.js') ?: time() ?>" defer></script>
 <script type="module" src="assets/firebase-service.js?v=<?= @filemtime(__DIR__ . '/assets/firebase-service.js') ?: time() ?>"></script>
 </body>
 </html>

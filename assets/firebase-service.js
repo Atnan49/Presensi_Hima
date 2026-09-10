@@ -537,27 +537,49 @@ export async function deleteCommitteeFromFirebase(eventId, uid) {
 // Helper untuk mengubah status telat per log presensi secara manual dari web
 export async function toggleLogLateStatus(logId) {
   if (!logId) return false;
+  let newTelat = null;
+  let studentName = 'Mahasiswa';
+
+  // 1. Update ke Firebase Realtime Database jika aktif
   try {
     const log = (window.cloudLogs || []).find(l => l.id === logId);
-    const newTelat = log ? !log.telat : true;
-    const logRef = ref(db, `log_presensi/${logId}/telat`);
-    await set(logRef, newTelat);
-    if (log) log.telat = newTelat;
-    console.log(`[Firebase] Status log ${logId} diubah menjadi telat=${newTelat}`);
-    if (typeof window.showToast === 'function') {
-      const studentName = log ? log.name : 'Mahasiswa';
-      window.showToast(`Status ${studentName} diubah ke: ${newTelat ? 'TELAT' : 'TEPAT WAKTU'}`, newTelat ? 'warning' : 'success');
+    if (log) {
+      studentName = log.name || 'Mahasiswa';
+      newTelat = !log.telat;
+      const logRef = ref(db, `log_presensi/${logId}/telat`);
+      await set(logRef, newTelat);
+      log.telat = newTelat;
     }
-    if (typeof window.loadDashboard === 'function') window.loadDashboard();
-    if (typeof window.loadRekap === 'function') window.loadRekap();
-    return true;
   } catch (err) {
-    console.error("[Firebase] Gagal mengubah status telat:", err);
-    if (typeof window.showToast === 'function') {
-      window.showToast("Gagal mengubah status kehadiran di cloud", "danger");
-    }
-    return false;
+    console.warn("[Firebase] Gagal mengubah status telat di cloud:", err);
   }
+
+  // 2. Sinkronkan ke database MySQL via API
+  try {
+    const res = await fetch('api/attendance.php', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: logId,
+        action: 'toggle_late',
+        telat: newTelat !== null ? (newTelat ? 1 : 0) : null
+      })
+    });
+    const data = await res.json();
+    if (data && data.success && newTelat === null) {
+      newTelat = data.telat === 1;
+      if (data.name) studentName = data.name;
+    }
+  } catch (e) {
+    console.warn("[MySQL] Gagal mengubah status telat di database:", e);
+  }
+
+  if (typeof window.showToast === 'function' && newTelat !== null) {
+    window.showToast(`Status ${studentName} diubah ke: ${newTelat ? 'TELAT' : 'TEPAT WAKTU'}`, newTelat ? 'warning' : 'success');
+  }
+  if (typeof window.loadDashboard === 'function') window.loadDashboard();
+  if (typeof window.loadRekap === 'function') window.loadRekap();
+  return true;
 }
 
 // Expose helper ke window

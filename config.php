@@ -352,41 +352,63 @@ function checkAuth() {
     }
 }
 
-// Guard untuk API mutasi (POST/PUT/DELETE)
+// Guard untuk API (Session Admin atau Device/Desktop API Key)
 function checkApiAuth() {
-    if (!isLoggedIn()) {
-        http_response_code(401);
-        echo json_encode([
-            'success' => false,
-            'message' => 'Unauthorized: Sesi login diperlukan untuk melakukan tindakan ini.'
-        ]);
-        exit;
+    // 1. Cek autentikasi via API Key (Desktop Python Client / IoT Device)
+    $expectedKey = defined('DEVICE_API_KEY') ? DEVICE_API_KEY : '';
+    $providedKey = $_SERVER['HTTP_X_API_KEY'] ?? $_SERVER['HTTP_X_DEVICE_KEY'] ?? $_REQUEST['api_key'] ?? $_REQUEST['key'] ?? '';
+    if (!empty($expectedKey) && !empty($providedKey) && hash_equals($expectedKey, (string)$providedKey)) {
+        return true;
     }
 
-    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-    if (in_array($method, ['POST', 'PUT', 'DELETE', 'PATCH'], true)) {
-        $csrfToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_POST['csrf_token'] ?? '';
-        // Validasi ketat token CSRF pada seluruh mutasi
-        if (empty($csrfToken) || !verifyCsrfToken($csrfToken)) {
-            http_response_code(403);
-            echo json_encode([
-                'success' => false,
-                'message' => 'Forbidden: Validasi token keamanan (CSRF) gagal.'
-            ]);
-            exit;
+    // Fallback akses lokal: Jika DEVICE_API_KEY belum dikonfigurasi dan request dari loopback
+    $remoteAddr = $_SERVER['REMOTE_ADDR'] ?? '';
+    if (empty($expectedKey) && in_array($remoteAddr, ['127.0.0.1', '::1'], true)) {
+        $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        if (stripos($userAgent, 'python') !== false) {
+            return true;
         }
     }
+
+    // 2. Cek autentikasi via Session Admin (Web Browser)
+    if (isLoggedIn()) {
+        $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+        if (in_array($method, ['POST', 'PUT', 'DELETE', 'PATCH'], true)) {
+            $csrfToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_POST['csrf_token'] ?? '';
+            // Validasi ketat token CSRF pada seluruh mutasi web
+            if (empty($csrfToken) || !verifyCsrfToken($csrfToken)) {
+                http_response_code(403);
+                echo json_encode([
+                    'status'  => 'error',
+                    'success' => false,
+                    'message' => 'Forbidden: Validasi token keamanan (CSRF) gagal.'
+                ]);
+                exit;
+            }
+        }
+        return true;
+    }
+
+    http_response_code(401);
+    echo json_encode([
+        'status'  => 'error',
+        'success' => false,
+        'message' => 'Unauthorized: Sesi login atau API Key yang valid diperlukan.'
+    ]);
+    exit;
 }
 
 // Verifikasi akses perangkat IoT (ESP8266)
 function verifyDeviceAccess() {
     $expectedKey = defined('DEVICE_API_KEY') ? DEVICE_API_KEY : '';
-    // Jika kunci belum diset di .env/config, berikan akses penuh untuk kompatibilitas
-    if (empty($expectedKey)) {
-        return true;
+    // Jika kunci diset di .env/config, wajib verifikasi kecocokan
+    if (!empty($expectedKey)) {
+        $providedKey = $_SERVER['HTTP_X_DEVICE_KEY'] ?? $_SERVER['HTTP_X_API_KEY'] ?? $_GET['key'] ?? $_GET['api_key'] ?? '';
+        return hash_equals($expectedKey, (string)$providedKey);
     }
-    $providedKey = $_SERVER['HTTP_X_DEVICE_KEY'] ?? $_GET['key'] ?? '';
-    return hash_equals($expectedKey, (string)$providedKey);
+    // Jika belum diset, hanya izinkan jika berasal dari localhost/loopback
+    $remoteAddr = $_SERVER['REMOTE_ADDR'] ?? '';
+    return in_array($remoteAddr, ['127.0.0.1', '::1'], true);
 }
 
 // CORS response headers for API requests

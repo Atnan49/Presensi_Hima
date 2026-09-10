@@ -102,32 +102,41 @@ if ($method === 'POST') {
         sendJSON(['success' => false, 'message' => 'Nama program kerja / acara wajib diisi'], 400);
     }
 
-    if ($isActive) {
-        // Nonaktifkan acara lain jika acara ini dijadikan aktif
-        $db->exec("UPDATE events SET is_active = 0");
-    }
-
+    $db->beginTransaction();
     try {
-        $stmt = $db->prepare("INSERT INTO events (name, description, event_date, start_time, end_time, target_audience, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)");
-        $stmt->execute([$name, $description, $eventDate, $startTime, $endTime, $targetAudience, $isActive]);
-    } catch (\Throwable $e) {
-        ensureDatabaseTables($db);
+        if ($isActive) {
+            // Nonaktifkan acara lain jika acara ini dijadikan aktif
+            $db->exec("UPDATE events SET is_active = 0");
+        }
+
         try {
             $stmt = $db->prepare("INSERT INTO events (name, description, event_date, start_time, end_time, target_audience, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)");
             $stmt->execute([$name, $description, $eventDate, $startTime, $endTime, $targetAudience, $isActive]);
-        } catch (\Throwable $e2) {
-            $stmt = $db->prepare("INSERT INTO events (name, description, event_date, is_active) VALUES (?, ?, ?, ?)");
-            $stmt->execute([$name, $description, $eventDate, $isActive]);
+        } catch (\Throwable $e) {
+            ensureDatabaseTables($db);
+            try {
+                $stmt = $db->prepare("INSERT INTO events (name, description, event_date, start_time, end_time, target_audience, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                $stmt->execute([$name, $description, $eventDate, $startTime, $endTime, $targetAudience, $isActive]);
+            } catch (\Throwable $e2) {
+                $stmt = $db->prepare("INSERT INTO events (name, description, event_date, is_active) VALUES (?, ?, ?, ?)");
+                $stmt->execute([$name, $description, $eventDate, $isActive]);
+            }
         }
+
+        $newId = (int)$db->lastInsertId();
+        $db->commit();
+
+        sendJSON([
+            'success' => true,
+            'message' => 'Program kerja / acara berhasil dibuat',
+            'id'      => $newId
+        ]);
+    } catch (\Throwable $err) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        sendJSON(['success' => false, 'message' => 'Gagal membuat program kerja: ' . $err->getMessage()], 500);
     }
-
-    $newId = (int)$db->lastInsertId();
-
-    sendJSON([
-        'success' => true,
-        'message' => 'Program kerja / acara berhasil dibuat',
-        'id'      => $newId
-    ]);
 }
 
 // --- PUT: Update acara / set aktif ---
@@ -143,11 +152,17 @@ if ($method === 'PUT') {
 
     // Aksi khusus: jadikan acara aktif
     if ($action === 'set_active') {
-        $db->exec("UPDATE events SET is_active = 0");
-        $stmt = $db->prepare("UPDATE events SET is_active = 1 WHERE id = ?");
-        $stmt->execute([$id]);
-
-        sendJSON(['success' => true, 'message' => 'Acara berhasil diaktifkan untuk presensi']);
+        $db->beginTransaction();
+        try {
+            $db->exec("UPDATE events SET is_active = 0");
+            $stmt = $db->prepare("UPDATE events SET is_active = 1 WHERE id = ?");
+            $stmt->execute([$id]);
+            $db->commit();
+            sendJSON(['success' => true, 'message' => 'Acara berhasil diaktifkan untuk presensi']);
+        } catch (\Throwable $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            sendJSON(['success' => false, 'message' => 'Gagal mengaktifkan acara'], 500);
+        }
     }
 
     // Aksi khusus: nonaktifkan acara

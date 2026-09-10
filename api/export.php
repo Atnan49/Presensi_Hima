@@ -2,6 +2,8 @@
 // API export data presensi format CSV dan Excel
 
 require_once '../config.php';
+startSessionSafe();
+checkAuth();
 
 $type   = $_GET['type']   ?? 'attendance';
 $format = $_GET['format'] ?? 'xls';
@@ -11,7 +13,8 @@ try {
 } catch (Exception $e) {
     http_response_code(500);
     header('Content-Type: text/plain; charset=UTF-8');
-    echo "Gagal menghubungkan ke database MySQL lokal: " . $e->getMessage() . "\n";
+    error_log("Database connection error in export.php: " . $e->getMessage());
+    echo "Gagal menghubungkan ke database MySQL lokal. Silakan coba beberapa saat lagi.\n";
     echo "Tip: Jika Anda menggunakan Firebase Cloud, gunakan tombol download langsung dari antarmuka Web Dashboard.\n";
     exit;
 }
@@ -335,8 +338,8 @@ echo "\xEF\xBB\xBF"; // UTF-8 BOM
 <body>
   <div class="kop-box">
     <div class="inst-label">HIMPUNAN MAHASISWA (HIMA) - SISTEM PRESENSI RFID</div>
-    <div class="main-title"><?= $title ?></div>
-    <div class="sub-title"><?= $subtitle ?></div>
+    <div class="main-title"><?= htmlspecialchars($title) ?></div>
+    <div class="sub-title"><?= htmlspecialchars($subtitle) ?></div>
     <div style="font-size: 9pt; color: #64748b; margin-top: 6px;">Total Hadir: <strong><?= count($rows) ?> Mahasiswa</strong> | Tanggal Export: <?= date('d/m/Y H:i:s') ?></div>
   </div>
 

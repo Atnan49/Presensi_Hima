@@ -1,7 +1,8 @@
 # Konfigurasi aplikasi GUI desktop presensi mahasiswa
 
-TITLE  = "Sistem Presensi Mahasiswa RFID"
-SERVER = "http://localhost/PRESENSI/php"   # Ganti IP sesuai MAMP Anda
+TITLE   = "Sistem Presensi Mahasiswa RFID"
+SERVER  = "http://localhost/PRESENSI/php"   # Ganti IP/folder sesuai server Anda
+API_KEY = ""                                # Samakan dengan DEVICE_API_KEY di .env jika aktif
 
 WIDTH  = 1280
 HEIGHT = 760

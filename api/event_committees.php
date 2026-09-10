@@ -9,6 +9,7 @@ $method = $_SERVER['REQUEST_METHOD'];
 
 // --- GET: Ambil susunan panitia berdasarkan event_id ---
 if ($method === 'GET') {
+    checkApiAuth();
     $eventId = (int)($_GET['event_id'] ?? 0);
     if (!$eventId) {
         sendJSON(['success' => false, 'message' => 'event_id wajib disertakan'], 400);

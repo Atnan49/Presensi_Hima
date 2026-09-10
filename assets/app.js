@@ -579,7 +579,7 @@ async function loadStudents(searchQuery = '') {
 function renderCloudStudents(searchQuery = '') {
   const users = window.cloudUsers || {};
   const list = Object.keys(users).map(uid => ({
-    id: uid,
+    id: '',
     uid: uid,
     name: users[uid].name || '-',
     nim: users[uid].nim || '-',
@@ -749,8 +749,8 @@ async function submitEdit() {
   const category = document.getElementById('edit-category')?.value || 'Anggota';
   const division = document.getElementById('edit-division')?.value.trim() || '';
   const position = document.getElementById('edit-position')?.value.trim() || '';
-  const rawId    = document.getElementById('edit-id')?.value;
-  const id       = parseInt(rawId) || 0;
+  const rawId    = document.getElementById('edit-id')?.value || '';
+  const id       = /^\d+$/.test(rawId) ? parseInt(rawId, 10) : 0;
 
   if (!name) { showToast('Nama mahasiswa tidak boleh kosong', 'warning'); return; }
 
@@ -793,7 +793,8 @@ async function deleteStudent(uid, name, id = null) {
 
   // 2. Hapus dari MySQL jika aktif
   try {
-    const numId = parseInt(id) || 0;
+    const rawId = String(id || '');
+    const numId = /^\d+$/.test(rawId) ? parseInt(rawId, 10) : 0;
     const res = await fetch(API.students, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
@@ -1226,8 +1227,20 @@ function exportAttendance(format = 'csv') {
 }
 
 // 3. Export Semua Riwayat Absensi
-function exportAllAttendance(format = 'csv') {
-  const allLogs = (window.cloudLogs && window.cloudLogs.length > 0) ? window.cloudLogs : (state.attendance || []);
+async function exportAllAttendance(format = 'csv') {
+  let allLogs = (window.cloudLogs && window.cloudLogs.length > 0) ? window.cloudLogs : [];
+
+  if (allLogs.length === 0) {
+    try {
+      const res = await fetch(`${API.attendance}?all=1`);
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.data)) {
+        allLogs = data.data;
+      }
+    } catch (e) {
+      console.warn('Gagal memuat seluruh riwayat presensi dari MySQL:', e);
+    }
+  }
 
   if (allLogs.length === 0) {
     showToast('Tidak ada data riwayat presensi', 'warning');
@@ -1963,11 +1976,12 @@ async function submitAddCommittee() {
     return;
   }
 
-  const selectedOpt = select.options[select.selectedIndex];
-  const name = selectedOpt.getAttribute('data-name') || '';
-  const nim = selectedOpt.getAttribute('data-nim') || '';
-  const category = selectedOpt.getAttribute('data-category') || 'Anggota';
-  const studentId = parseInt(selectedOpt.getAttribute('data-id')) || 0;
+  const selectedOpt  = select.options[select.selectedIndex];
+  const name         = selectedOpt.getAttribute('data-name') || '';
+  const nim          = selectedOpt.getAttribute('data-nim') || '';
+  const category     = selectedOpt.getAttribute('data-category') || 'Anggota';
+  const rawStudentId = selectedOpt.getAttribute('data-id') || '';
+  const studentId    = /^\d+$/.test(rawStudentId) ? parseInt(rawStudentId, 10) : 0;
 
   // 1. Simpan ke Firebase Realtime Database
   if (typeof window.saveCommitteeToFirebase === 'function') {
@@ -2363,39 +2377,56 @@ async function submitBatchImport() {
     btnSubmit.textContent = 'Mengimport...';
   }
 
+  let mysqlOk = false;
+  let firebaseOk = false;
+  let errorMsg = '';
+
+  // 1. Simpan massal ke MySQL via batch API
   try {
-    // 1. Simpan massal ke MySQL via batch API
     const res = await fetch(API.students, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ batch: true, students: importedRowsCache })
     });
     const data = await res.json();
-
-    // 2. Sinkronkan ke Firebase via batch multi-path (1 request) jika tersedia
-    if (typeof window.batchRegisterUsersToFirebase === 'function' && window.isFirebaseConnected) {
-      await window.batchRegisterUsersToFirebase(importedRowsCache);
-    } else if (typeof window.registerUserToFirebase === 'function' && window.isFirebaseConnected) {
-      for (const item of importedRowsCache) {
-        try {
-          await window.registerUserToFirebase(item.uid, item.name, item.nim, item.category, item.division, item.position);
-        } catch (e) {}
-      }
-    }
-
-    if (data.success) {
-      showToast(data.message || `Berhasil mengimport ${importedRowsCache.length} mahasiswa!`, 'success');
+    if (data && data.success) {
+      mysqlOk = true;
     } else {
-      showToast(data.message || 'Gagal mengimport data', 'danger');
+      errorMsg = data?.message || 'Gagal menyimpan ke database';
     }
   } catch (e) {
-    console.error('Batch import error:', e);
-    showToast('Terjadi kesalahan saat mengimport data', 'danger');
-  } finally {
-    closeImportModal();
-    loadStudents();
-    loadDashboard();
+    console.warn('MySQL batch import notice:', e);
+    errorMsg = e.message;
   }
+
+  // 2. Sinkronkan ke Firebase Realtime Database
+  if (window.isFirebaseConnected) {
+    try {
+      if (typeof window.batchRegisterUsersToFirebase === 'function') {
+        await window.batchRegisterUsersToFirebase(importedRowsCache);
+        firebaseOk = true;
+      } else if (typeof window.registerUserToFirebase === 'function') {
+        for (const item of importedRowsCache) {
+          try {
+            await window.registerUserToFirebase(item.uid, item.name, item.nim, item.category, item.division, item.position);
+          } catch (e) {}
+        }
+        firebaseOk = true;
+      }
+    } catch (e) {
+      console.warn('Firebase batch import notice:', e);
+    }
+  }
+
+  if (mysqlOk || firebaseOk) {
+    showToast(`Berhasil mengimport ${importedRowsCache.length} mahasiswa!`, 'success');
+  } else {
+    showToast(errorMsg || 'Gagal mengimport data', 'danger');
+  }
+
+  closeImportModal();
+  loadStudents();
+  loadDashboard();
 }
 
 // Administrator password management

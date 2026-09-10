@@ -22,4 +22,3 @@ session_destroy();
 
 header('Location: login?msg=logged_out');
 exit;
-exit;

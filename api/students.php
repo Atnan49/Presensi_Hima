@@ -9,6 +9,7 @@ $method = $_SERVER['REQUEST_METHOD'];
 
 // --- GET: Ambil semua data mahasiswa ---
 if ($method === 'GET') {
+    checkApiAuth();
     $search = isset($_GET['search']) ? '%' . trim($_GET['search']) . '%' : '%';
     $category = isset($_GET['category']) ? trim($_GET['category']) : '';
     $division = isset($_GET['division']) ? trim($_GET['division']) : '';
